@@ -774,6 +774,79 @@ git commit -m "feat: caption chunking 5-7 words per line"
 
 ---
 
+### Task 5b: Harden caption ids + coverage (follow-up from Task 5 review)
+
+**Files:**
+- Modify: `core/caption.ts`
+- Modify: `tests/caption.test.ts` (keep existing test green)
+
+- [ ] **Step 1: Add tests**
+
+```ts
+describe('chunkCaption edge cases', () => {
+  const w = (n: number, startAt = 0) =>
+    Array.from({ length: n }, (_, i) => ({ text: `w${i}`, start: startAt + i * 0.4, end: startAt + i * 0.4 + 0.3 }));
+
+  it('returns [] for empty input', () => {
+    expect(chunkCaption([])).toEqual([]);
+  });
+
+  it('flushes at 7 words without punctuation (orphan documented: 7+1)', () => {
+    const lines = chunkCaption(w(8));
+    expect(lines.map((l) => l.text.split(' ').length)).toEqual([7, 1]);
+  });
+
+  it('emits trailing partial line', () => {
+    const lines = chunkCaption(w(3));
+    expect(lines).toHaveLength(1);
+    expect(lines[0].text).toBe('w0 w1 w2');
+  });
+
+  it('breaks on …? and trailing closers once 5+ words', () => {
+    const words = [...w(5), { text: 'thật…?', start: 2.0, end: 2.3 }, ...w(2, 2.4)];
+    const lines = chunkCaption(words);
+    expect(lines[0].text.endsWith('thật…?')).toBe(true);
+    const words2 = [...w(5), { text: 'rồi."', start: 2.0, end: 2.3 }];
+    expect(chunkCaption(words2)[0].text.endsWith('rồi."')).toBe(true);
+  });
+
+  it('emits unique ms-precision ids', () => {
+    const lines = chunkCaption(w(20));
+    const ids = lines.map((l) => l.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const id of ids) expect(id).toMatch(/^cc-\d+$/);
+  });
+});
+```
+
+- [ ] **Step 2: Run to verify failures**
+
+Run: `npx vitest run tests/caption.test.ts`
+Expected: FAIL (old cs-precision ids, closers not matched).
+
+- [ ] **Step 3: Implement**
+
+In `core/caption.ts`:
+1. Import: `import { dedupeIds } from './cutDetection.js';`
+2. Sentence-end regex → `/[.!?…:]["'”’)\]}]*$/` (`:` breaks before lists/quotes — intentional, keep).
+3. Line id → `` `cc-${Math.round(current[0].start * 1000)}` ``.
+4. Before `return lines;`, dedupe: `const ids = dedupeIds(lines.map((l) => l.id)); return lines.map((l, i) => ({ ...l, id: ids[i] }));`
+
+- [ ] **Step 4: Run tests + typecheck + suite**
+
+`npx vitest run tests/caption.test.ts` → PASS (6 tests). `npm run typecheck` → passes. Full suite → no regressions.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add core/caption.ts tests/caption.test.ts
+git commit -m "fix: ms-precision caption ids, closer-aware breaks, edge tests"
+```
+
+Deferred (not this task): orphan-line rebalancing (7+1 → 4+4), char/duration overflow guard for vertical safe area (P1 with safezone render).
+
+---
+
 ### Task 6: Safezone helpers (pure)
 
 **Files:**
