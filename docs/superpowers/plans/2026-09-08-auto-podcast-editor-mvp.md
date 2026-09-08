@@ -1,0 +1,1514 @@
+# Auto Podcast Editor (MVP) Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Build a working MVP: import a talking-head video, transcribe locally with whisper.cpp, auto-propose silence/filler cuts, edit on a basic timeline with undo, auto-generate safezone captions, render MP4 via Remotion + FFmpeg.
+
+**Architecture:** Electron Main owns files, whisper.cpp sidecar, FFmpeg and a sequential job queue; React renderer owns timeline UI and Remotion Player preview; `core/` holds pure, fully unit-tested logic (cut detection, captions, safezone, waveform, atomic file writes). Deterministic pipeline: same project JSON renders identical output.
+
+**Tech Stack:** Electron + React 18 + TypeScript 5 + Vite (electron-vite) + Vitest + Remotion 4 + whisper.cpp sidecar + system FFmpeg.
+
+**Scope note:** This plan covers MVP only (spec §9). P1 (auto SFX/transition, progressive chunk reveal) and P2 (beat-cut, face tracking) are separate follow-up plans. Each task below produces working, tested software.
+
+**Spec:** `docs/superpowers/specs/2026-09-08-auto-podcast-editor-design.md`
+
+---
+
+## File Structure (created by this plan)
+
+```
+package.json                      # scripts: dev, typecheck, test, dist
+tsconfig.json                     # base TS config
+electron.vite.config.ts           # electron-vite build config
+vitest.config.ts                  # test config (node env default)
+core/types.ts                     # Project, Clip, CutProposal, Word, Settings types
+core/projectFile.ts               # atomic save/load (temp-then-rename)
+core/waveform.ts                  # computePeaks, downsamplePeaks
+core/cutDetection.ts              # proposeCuts (silence/filler/low-audio)
+core/caption.ts                   # chunkCaption (5-7 words/line)
+core/safezone.ts                  # isInsideSafezone, clampToSafezone
+core/exportText.ts                # buildSrt, buildCaptionTxt
+core/defaults.ts                  # DEFAULT_SETTINGS (spec §10)
+electron/jobs.ts                  # sequential JobQueue (concurrency 1)
+electron/media.ts                 # ffmpeg arg builders + injectable runners
+electron/whisper.ts               # whisper arg builder + progress parser + runner
+electron/main.ts                  # window, IPC wiring (thin, manual-verified)
+electron/preload.ts               # contextBridge window.api
+src/main.tsx, src/App.tsx         # renderer entry + shell layout
+src/state/reducer.ts              # project reducer + undo stack (pure, tested)
+src/components/Timeline.tsx       # basic timeline (split/delete/select)
+src/components/WaveformView.tsx   # peaks canvas (manual-verified)
+src/components/CutProposals.tsx   # proposal list (manual-verified)
+src/components/Preview.tsx        # Remotion Player + preset switch (manual-verified)
+src/components/SettingsPanel.tsx  # thresholds + model select (manual-verified)
+src/remotion/Root.tsx             # Remotion composition registration
+src/remotion/PodcastComposition.tsx # renders segments + captions (preview + render)
+tests/*.test.ts                   # one test file per core module + reducer + jobs
+```
+
+---
+
+### Task 1: Scaffold repo, configs, install
+
+**Files:**
+- Create: `package.json`
+- Create: `tsconfig.json`
+- Create: `electron.vite.config.ts`
+- Create: `vitest.config.ts`
+
+- [ ] **Step 1: Write package.json**
+
+```json
+{
+  "name": "auto-podcast-editor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "dist": "electron-vite build"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.1.0",
+    "@types/node": "^22.9.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "electron": "^33.0.0",
+    "electron-vite": "^2.5.0",
+    "jsdom": "^25.0.0",
+    "remotion": "^4.0.0",
+    "@remotion/cli": "^4.0.0",
+    "@remotion/player": "^4.0.0",
+    "@remotion/renderer": "^4.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.6.0",
+    "vite": "^5.4.0",
+    "vitest": "^2.1.0"
+  }
+}
+```
+
+- [ ] **Step 2: Write tsconfig.json**
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
+    "outDir": "out",
+    "types": ["node"]
+  },
+  "include": ["core", "electron", "src", "tests"]
+}
+```
+
+- [ ] **Step 3: Write electron.vite.config.ts**
+
+```ts
+import { defineConfig } from 'electron-vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  main: {},
+  preload: {},
+  renderer: { plugins: [react()] },
+});
+```
+
+- [ ] **Step 4: Write vitest.config.ts**
+
+```ts
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: { environment: 'node', include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'] },
+});
+```
+
+- [ ] **Step 5: Install and typecheck**
+
+Run: `npm install`
+Expected: completes with no ERESOLVE errors.
+
+Run: `npm run typecheck`
+Expected: passes (no source files yet, config valid).
+
+- [ ] **Step 6: Init git and commit**
+
+```bash
+git init
+git add package.json tsconfig.json electron.vite.config.ts vitest.config.ts
+git commit -m "chore: scaffold auto-podcast-editor (electron-vite + vitest)"
+```
+
+---
+
+### Task 2: Core types + atomic project file
+
+**Files:**
+- Create: `core/types.ts`
+- Create: `core/projectFile.ts`
+- Test: `tests/projectFile.test.ts`
+
+- [ ] **Step 1: Write the failing test**
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { saveProject, loadProject } from '../core/projectFile.js';
+import type { Project } from '../core/types.js';
+
+const project: Project = {
+  version: 1,
+  name: 'demo',
+  sourcePath: 'C:/vids/ep1.mp4',
+  durationSec: 120,
+  clips: [],
+  proposals: [],
+  captions: [],
+  preset: 'vertical',
+  settings: { silenceSec: 0.6, fillerMaxSec: 1.0, lowAudioDb: -40, topicPauseSec: 2.0, model: 'base' },
+};
+
+describe('projectFile', () => {
+  it('round-trips a project through save/load', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ape-'));
+    const file = join(dir, 'ep1.ape.json');
+    await saveProject(file, project);
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual(project);
+    expect(await loadProject(file)).toEqual(project);
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `npx vitest run tests/projectFile.test.ts`
+Expected: FAIL with "Failed to resolve import ../core/projectFile.js".
+
+- [ ] **Step 3: Write minimal implementation (types + atomic write)**
+
+```ts
+export type Preset = 'vertical' | 'horizontal';
+
+export interface Word { text: string; start: number; end: number; }
+
+export interface Clip { id: string; track: 'V1' | 'A1' | 'A2' | 'CC'; start: number; end: number; label: string; }
+
+export type ProposalKind = 'silence' | 'filler' | 'low-audio';
+
+export interface CutProposal { id: string; start: number; end: number; kind: ProposalKind; reason: string; confidence: number; }
+
+export interface CaptionLine { id: string; start: number; end: number; text: string; }
+
+export interface Settings { silenceSec: number; fillerMaxSec: number; lowAudioDb: number; topicPauseSec: number; model: 'tiny' | 'base' | 'small'; }
+
+export interface Project {
+  version: 1;
+  name: string;
+  sourcePath: string;
+  durationSec: number;
+  clips: Clip[];
+  proposals: CutProposal[];
+  captions: CaptionLine[];
+  preset: Preset;
+  settings: Settings;
+}
+```
+
+```ts
+import { readFile, rename, writeFile } from 'node:fs/promises';
+import type { Project } from './types.js';
+
+export async function saveProject(filePath: string, project: Project): Promise<void> {
+  const tmpPath = `${filePath}.tmp`;
+  await writeFile(tmpPath, JSON.stringify(project, null, 2), 'utf8');
+  await rename(tmpPath, filePath);
+}
+
+export async function loadProject(filePath: string): Promise<Project> {
+  const raw = await readFile(filePath, 'utf8');
+  const parsed = JSON.parse(raw) as Project;
+  if (parsed.version !== 1) throw new Error(`unsupported project version: ${String(parsed.version)}`);
+  return parsed;
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `npx vitest run tests/projectFile.test.ts`
+Expected: PASS (1 test).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add core/types.ts core/projectFile.ts tests/projectFile.test.ts
+git commit -m "feat: project model with atomic temp-then-rename save"
+```
+
+---
+
+### Task 3: Waveform peaks (pure)
+
+**Files:**
+- Create: `core/waveform.ts`
+- Test: `tests/waveform.test.ts`
+
+- [ ] **Step 1: Write the failing test**
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { computePeaks, downsamplePeaks } from '../core/waveform.js';
+
+describe('computePeaks', () => {
+  it('returns one RMS value per window', () => {
+    const samples = new Int16Array([0, 32767, 0, -32768, 0, 0, 0, 0]);
+    const peaks = computePeaks(samples, 8, 2);
+    expect(peaks).toHaveLength(2);
+    expect(peaks[0]).toBeGreaterThan(peaks[1]);
+    expect(peaks[1]).toBe(0);
+  });
+});
+
+describe('downsamplePeaks', () => {
+  it('averages buckets to target length', () => {
+    expect(downsamplePeaks([0.2, 0.4, 0.6, 0.8], 2)).toEqual([0.3, 0.7]);
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `npx vitest run tests/waveform.test.ts`
+Expected: FAIL with "Failed to resolve import ../core/waveform.js".
+
+- [ ] **Step 3: Write minimal implementation**
+
+```ts
+export function computePeaks(samples: Int16Array, sampleRate: number, peaksPerSecond: number): number[] {
+  const windowSize = Math.max(1, Math.floor(sampleRate / peaksPerSecond));
+  const peaks: number[] = [];
+  for (let i = 0; i < samples.length; i += windowSize) {
+    let sum = 0;
+    const end = Math.min(i + windowSize, samples.length);
+    for (let j = i; j < end; j++) {
+      const v = samples[j] / 32768;
+      sum += v * v;
+    }
+    peaks.push(Number(Math.sqrt(sum / (end - i)).toFixed(4)));
+  }
+  return peaks;
+}
+
+export function downsamplePeaks(peaks: number[], targetLength: number): number[] {
+  if (targetLength <= 0) throw new Error('targetLength must be positive');
+  if (peaks.length <= targetLength) return [...peaks];
+  const out: number[] = [];
+  const bucket = peaks.length / targetLength;
+  for (let i = 0; i < targetLength; i++) {
+    const start = Math.floor(i * bucket);
+    const end = Math.floor((i + 1) * bucket);
+    const slice = peaks.slice(start, Math.max(end, start + 1));
+    out.push(Number((slice.reduce((a, b) => a + b, 0) / slice.length).toFixed(4)));
+  }
+  return out;
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `npx vitest run tests/waveform.test.ts`
+Expected: PASS (2 tests).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add core/waveform.ts tests/waveform.test.ts
+git commit -m "feat: waveform RMS peaks with downsampling"
+```
+
+---
+
+### Task 4: Cut detection (pure)
+
+**Files:**
+- Create: `core/cutDetection.ts`
+- Test: `tests/cutDetection.test.ts`
+
+- [ ] **Step 1: Write the failing test**
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { proposeCuts } from '../core/cutDetection.js';
+import type { Settings } from '../core/types.js';
+
+const settings: Settings = { silenceSec: 0.6, fillerMaxSec: 1.0, lowAudioDb: -40, topicPauseSec: 2.0, model: 'base' };
+
+describe('proposeCuts', () => {
+  it('flags silence gaps between words longer than threshold', () => {
+    const words = [
+      { text: 'xin', start: 0.0, end: 0.3 },
+      { text: 'chào', start: 1.5, end: 1.8 },
+    ];
+    const out = proposeCuts(words, [], settings);
+    expect(out).toHaveLength(1);
+    expect(out[0].kind).toBe('silence');
+    expect(out[0].start).toBeCloseTo(0.3);
+    expect(out[0].end).toBeCloseTo(1.5);
+  });
+
+  it('flags filler words shorter than fillerMaxSec', () => {
+    const words = [
+      { text: 'hôm', start: 0.0, end: 0.3 },
+      { text: 'ừm', start: 0.4, end: 0.8 },
+      { text: 'nay', start: 0.9, end: 1.2 },
+    ];
+    const out = proposeCuts(words, [], settings);
+    expect(out).toHaveLength(1);
+    expect(out[0].kind).toBe('filler');
+  });
+
+  it('ignores gaps shorter than threshold', () => {
+    const words = [
+      { text: 'a', start: 0.0, end: 0.3 },
+      { text: 'b', start: 0.6, end: 0.9 },
+    ];
+    expect(proposeCuts(words, [], settings)).toHaveLength(0);
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `npx vitest run tests/cutDetection.test.ts`
+Expected: FAIL with "Failed to resolve import ../core/cutDetection.js".
+
+- [ ] **Step 3: Write minimal implementation**
+
+```ts
+import type { CutProposal, Settings, Word } from './types.js';
+
+const FILLER_LEXICON = new Set(['ừm', 'ừ', 'à', 'ờ', 'ơ', 'nhỉ', 'ừm...', 'à...']);
+
+export function proposeCuts(words: Word[], _peaks: number[], settings: Settings): CutProposal[] {
+  const out: CutProposal[] = [];
+  for (const w of words) {
+    const text = w.text.trim().toLowerCase();
+    if (FILLER_LEXICON.has(text) && w.end - w.start <= settings.fillerMaxSec) {
+      out.push({
+        id: `filler-${w.start.toFixed(2)}`,
+        start: w.start,
+        end: w.end,
+        kind: 'filler',
+        reason: `filler word "${w.text}"`,
+        confidence: 0.85,
+      });
+    }
+  }
+  for (let i = 0; i + 1 < words.length; i++) {
+    const gapStart = words[i].end;
+    const gapEnd = words[i + 1].start;
+    if (gapEnd - gapStart >= settings.silenceSec) {
+      out.push({
+        id: `silence-${gapStart.toFixed(2)}`,
+        start: gapStart,
+        end: gapEnd,
+        kind: 'silence',
+        reason: `silence ${(gapEnd - gapStart).toFixed(2)}s`,
+        confidence: gapEnd - gapStart >= 2 * settings.silenceSec ? 0.95 : 0.75,
+      });
+    }
+  }
+  return out.sort((a, b) => a.start - b.start);
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `npx vitest run tests/cutDetection.test.ts`
+Expected: PASS (3 tests).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add core/cutDetection.ts tests/cutDetection.test.ts
+git commit -m "feat: silence and filler cut proposals from transcript"
+```
+
+---
+
+### Task 5: Caption chunking (pure)
+
+**Files:**
+- Create: `core/caption.ts`
+- Test: `tests/caption.test.ts`
+
+- [ ] **Step 1: Write the failing test**
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { chunkCaption } from '../core/caption.js';
+
+describe('chunkCaption', () => {
+  it('packs 5-7 words per line and breaks at sentence end', () => {
+    const words = 'một hai ba bốn năm sáu. bảy tám chín mười mười một mười hai mười ba'.split(' ')
+      .map((text, i) => ({ text, start: i * 0.4, end: i * 0.4 + 0.3 }));
+    const lines = chunkCaption(words);
+    expect(lines[0].text).toBe('một hai ba bốn năm sáu.');
+    expect(lines[1].text.split(' ').length).toBeLessThanOrEqual(7);
+    expect(lines[0].start).toBe(0);
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `npx vitest run tests/caption.test.ts`
+Expected: FAIL with "Failed to resolve import ../core/caption.js".
+
+- [ ] **Step 3: Write minimal implementation**
+
+```ts
+import type { CaptionLine, Word } from './types.js';
+
+const MAX_WORDS = 7;
+const MIN_WORDS = 5;
+
+export function chunkCaption(words: Word[]): CaptionLine[] {
+  const lines: CaptionLine[] = [];
+  let current: Word[] = [];
+  const flush = () => {
+    if (current.length === 0) return;
+    lines.push({
+      id: `cc-${current[0].start.toFixed(2)}`,
+      start: current[0].start,
+      end: current[current.length - 1].end,
+      text: current.map((w) => w.text).join(' '),
+    });
+    current = [];
+  };
+  for (const w of words) {
+    current.push(w);
+    const endsSentence = /[.!?…:]$/.test(w.text);
+    if (current.length >= MAX_WORDS || (endsSentence && current.length >= MIN_WORDS)) flush();
+  }
+  flush();
+  return lines;
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `npx vitest run tests/caption.test.ts`
+Expected: PASS (1 test).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add core/caption.ts tests/caption.test.ts
+git commit -m "feat: caption chunking 5-7 words per line"
+```
+
+---
+
+### Task 6: Safezone helpers (pure)
+
+**Files:**
+- Create: `core/safezone.ts`
+- Test: `tests/safezone.test.ts`
+
+- [ ] **Step 1: Write the failing test**
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { clampToSafezone, isInsideSafezone } from '../core/safezone.js';
+
+const canvas = { w: 1080, h: 1920 };
+const insets = { top: 160, bottom: 420, left: 48, right: 48 };
+
+describe('safezone', () => {
+  it('accepts rects inside the safe area', () => {
+    expect(isInsideSafezone({ x: 100, y: 900, w: 880, h: 120 }, canvas, insets)).toBe(true);
+  });
+
+  it('rejects rects overlapping the TikTok action bar', () => {
+    expect(isInsideSafezone({ x: 900, y: 1500, w: 150, h: 120 }, canvas, insets)).toBe(false);
+  });
+
+  it('clamps a rect back inside', () => {
+    const out = clampToSafezone({ x: 0, y: 0, w: 200, h: 100 }, canvas, insets);
+    expect(out.x).toBe(48);
+    expect(out.y).toBe(160);
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `npx vitest run tests/safezone.test.ts`
+Expected: FAIL with "Failed to resolve import ../core/safezone.js".
+
+- [ ] **Step 3: Write minimal implementation**
+
+```ts
+export interface Rect { x: number; y: number; w: number; h: number; }
+export interface Insets { top: number; bottom: number; left: number; right: number; }
+
+export const VERTICAL_INSETS: Insets = { top: 160, bottom: 420, left: 48, right: 48 };
+
+export function safeArea(canvas: { w: number; h: number }, insets: Insets): Rect {
+  return { x: insets.left, y: insets.top, w: canvas.w - insets.left - insets.right, h: canvas.h - insets.top - insets.bottom };
+}
+
+export function isInsideSafezone(rect: Rect, canvas: { w: number; h: number }, insets: Insets): boolean {
+  const area = safeArea(canvas, insets);
+  return rect.x >= area.x && rect.y >= area.y && rect.x + rect.w <= area.x + area.w && rect.y + rect.h <= area.y + area.h;
+}
+
+export function clampToSafezone(rect: Rect, canvas: { w: number; h: number }, insets: Insets): Rect {
+  const area = safeArea(canvas, insets);
+  const w = Math.min(rect.w, area.w);
+  const h = Math.min(rect.h, area.h);
+  return {
+    x: Math.min(Math.max(rect.x, area.x), area.x + area.w - w),
+    y: Math.min(Math.max(rect.y, area.y), area.y + area.h - h),
+    w,
+    h,
+  };
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `npx vitest run tests/safezone.test.ts`
+Expected: PASS (3 tests).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add core/safezone.ts tests/safezone.test.ts
+git commit -m "feat: vertical video safezone helpers"
+```
+
+---
+
+### Task 7: Export text builders (SRT + caption.txt)
+
+**Files:**
+- Create: `core/exportText.ts`
+- Test: `tests/exportText.test.ts`
+
+- [ ] **Step 1: Write the failing test**
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { buildCaptionTxt, buildSrt } from '../core/exportText.js';
+
+describe('buildSrt', () => {
+  it('formats lines with SRT timestamps', () => {
+    const srt = buildSrt([{ id: 'cc-0', start: 61.5, end: 63.25, text: 'xin chào' }]);
+    expect(srt).toContain('00:01:01,500 --> 00:01:03,250');
+    expect(srt).toContain('xin chào');
+  });
+});
+
+describe('buildCaptionTxt', () => {
+  it('appends exactly 4 hashtags', () => {
+    const out = buildCaptionTxt('Tập 1 podcast', ['#podcast', '#vietnam', '#tips', '#xuhuong']);
+    expect(out).toContain('Tập 1 podcast');
+    expect(out.match(/#/g)).toHaveLength(4);
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `npx vitest run tests/exportText.test.ts`
+Expected: FAIL with "Failed to resolve import ../core/exportText.js".
+
+- [ ] **Step 3: Write minimal implementation**
+
+```ts
+import type { CaptionLine } from './types.js';
+
+function stamp(sec: number): string {
+  const ms = Math.round(sec * 1000);
+  const h = String(Math.floor(ms / 3_600_000)).padStart(2, '0');
+  const m = String(Math.floor((ms % 3_600_000) / 60_000)).padStart(2, '0');
+  const s = String(Math.floor((ms % 60_000) / 1000)).padStart(2, '0');
+  const r = String(ms % 1000).padStart(3, '0');
+  return `${h}:${m}:${s},${r}`;
+}
+
+export function buildSrt(lines: CaptionLine[]): string {
+  return lines.map((l, i) => `${i + 1}\n${stamp(l.start)} --> ${stamp(l.end)}\n${l.text}\n`).join('\n');
+}
+
+export function buildCaptionTxt(title: string, hashtags: string[]): string {
+  if (hashtags.length !== 4) throw new Error('caption requires exactly 4 hashtags');
+  return `${title}\n\n${hashtags.join(' ')}`;
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `npx vitest run tests/exportText.test.ts`
+Expected: PASS (2 tests).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add core/exportText.ts tests/exportText.test.ts
+git commit -m "feat: SRT and TikTok caption builders"
+```
+
+---
+
+### Task 8: Defaults module
+
+**Files:**
+- Create: `core/defaults.ts`
+- Test: `tests/defaults.test.ts`
+
+- [ ] **Step 1: Write the failing test**
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { DEFAULT_SETTINGS } from '../core/defaults.js';
+
+describe('DEFAULT_SETTINGS', () => {
+  it('matches approved spec section 10', () => {
+    expect(DEFAULT_SETTINGS.silenceSec).toBe(0.6);
+    expect(DEFAULT_SETTINGS.fillerMaxSec).toBe(1.0);
+    expect(DEFAULT_SETTINGS.lowAudioDb).toBe(-40);
+    expect(DEFAULT_SETTINGS.topicPauseSec).toBe(2.0);
+    expect(DEFAULT_SETTINGS.model).toBe('base');
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `npx vitest run tests/defaults.test.ts`
+Expected: FAIL with "Failed to resolve import ../core/defaults.js".
+
+- [ ] **Step 3: Write minimal implementation**
+
+```ts
+import type { Settings } from './types.js';
+
+export const DEFAULT_SETTINGS: Settings = {
+  silenceSec: 0.6,
+  fillerMaxSec: 1.0,
+  lowAudioDb: -40,
+  topicPauseSec: 2.0,
+  model: 'base',
+};
+
+export const SETTINGS_RANGES = {
+  silenceSec: { min: 0.3, max: 1.5 },
+  fillerMaxSec: { min: 0.5, max: 2.0 },
+  topicPauseSec: { min: 1.0, max: 4.0 },
+} as const;
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `npx vitest run tests/defaults.test.ts`
+Expected: PASS (1 test).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add core/defaults.ts tests/defaults.test.ts
+git commit -m "feat: approved default settings and ranges"
+```
+
+---
+
+### Task 9: Sequential job queue (Electron, pure)
+
+**Files:**
+- Create: `electron/jobs.ts`
+- Test: `tests/jobs.test.ts`
+
+- [ ] **Step 1: Write the failing test**
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { JobQueue } from '../electron/jobs.js';
+
+const tick = () => new Promise((r) => setTimeout(r, 0));
+
+describe('JobQueue', () => {
+  it('runs only one heavy job at a time, in order', async () => {
+    const order: string[] = [];
+    const q = new JobQueue();
+    const a = q.enqueue('transcribe', async () => { order.push('a-start'); await tick(); order.push('a-end'); });
+    const b = q.enqueue('render', async () => { order.push('b-start'); await tick(); order.push('b-end'); });
+    await Promise.all([a, b]);
+    expect(order).toEqual(['a-start', 'a-end', 'b-start', 'b-end']);
+  });
+
+  it('reports queue position for waiting jobs', () => {
+    const q = new JobQueue();
+    q.enqueue('transcribe', async () => { await tick(); });
+    const events: string[] = [];
+    q.onEvent((e) => events.push(`${e.type}:${e.name}`));
+    q.enqueue('render', async () => { await tick(); });
+    expect(events).toContain('queued:render');
+  });
+
+  it('cancel keeps finished work and stops the rest', async () => {
+    const q = new JobQueue();
+    const ran: string[] = [];
+    const slow = q.enqueue('transcribe', async () => { await new Promise((r) => setTimeout(r, 30)); ran.push('slow'); });
+    const p2 = q.enqueue('render', async () => { ran.push('never'); });
+    q.cancelAll();
+    await expect(p2).rejects.toThrow('cancelled');
+    await slow;
+    expect(ran).toEqual(['slow']);
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `npx vitest run tests/jobs.test.ts`
+Expected: FAIL with "Failed to resolve import ../electron/jobs.js".
+
+- [ ] **Step 3: Write minimal implementation**
+
+```ts
+export type JobEvent = { type: 'started' | 'queued' | 'done' | 'failed' | 'cancelled'; name: string };
+
+export class JobQueue {
+  private tail: Promise<unknown> = Promise.resolve();
+  private pending = 0;
+  private cancelled = false;
+  private listeners: Array<(e: JobEvent) => void> = [];
+
+  onEvent(fn: (e: JobEvent) => void): void {
+    this.listeners.push(fn);
+  }
+
+  private emit(e: JobEvent): void {
+    for (const fn of this.listeners) fn(e);
+  }
+
+  enqueue<T>(name: string, job: () => Promise<T>): Promise<T> {
+    if (this.cancelled) return Promise.reject(new Error('cancelled'));
+    if (this.pending > 0) this.emit({ type: 'queued', name });
+    this.pending += 1;
+    const run = this.tail.then(async () => {
+      if (this.cancelled) throw new Error('cancelled');
+      this.emit({ type: 'started', name });
+      try {
+        const result = await job();
+        this.emit({ type: 'done', name });
+        return result;
+      } catch (err) {
+        this.emit({ type: 'failed', name });
+        throw err;
+      } finally {
+        this.pending -= 1;
+      }
+    });
+    this.tail = run.catch(() => undefined);
+    return run;
+  }
+
+  cancelAll(): void {
+    this.cancelled = true;
+    this.emit({ type: 'cancelled', name: 'all' });
+  }
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `npx vitest run tests/jobs.test.ts`
+Expected: PASS (3 tests).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add electron/jobs.ts tests/jobs.test.ts
+git commit -m "feat: sequential heavy-job queue with cancel"
+```
+
+---
+
+### Task 10: FFmpeg arg builders + runners (injectable spawn)
+
+**Files:**
+- Create: `electron/media.ts`
+- Test: `tests/media.test.ts`
+
+- [ ] **Step 1: Write the failing test**
+
+```ts
+import { describe, expect, it, vi } from 'vitest';
+import { buildAudioExtractArgs, buildPeaksArgs, buildProbeArgs, runFfprobe } from '../electron/media.js';
+
+describe('media arg builders', () => {
+  it('builds a probe command', () => {
+    expect(buildProbeArgs('C:/vids/ep1.mp4')).toEqual([
+      '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1', 'C:/vids/ep1.mp4',
+    ]);
+  });
+
+  it('builds 16kHz mono extract args', () => {
+    expect(buildAudioExtractArgs('in.mp4', 'out.wav')).toEqual(['-y', '-i', 'in.mp4', '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le', 'out.wav']);
+  });
+
+  it('builds raw peaks pipe args', () => {
+    expect(buildPeaksArgs('in.mp4')).toEqual(['-v', 'error', '-i', 'in.mp4', '-ar', '8000', '-ac', '1', '-f', 's16le', '-']);
+  });
+});
+
+describe('runFfprobe', () => {
+  it('parses duration from stdout', async () => {
+    const spawn = vi.fn().mockReturnValue({ stdout: 'duration=120.5\n' });
+    expect(await runFfprobe('x.mp4', spawn)).toBeCloseTo(120.5);
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `npx vitest run tests/media.test.ts`
+Expected: FAIL with "Failed to resolve import ../electron/media.js".
+
+- [ ] **Step 3: Write minimal implementation**
+
+```ts
+export type SpawnFn = (cmd: string, args: string[]) => { stdout: string };
+
+export function buildProbeArgs(input: string): string[] {
+  return ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1', input];
+}
+
+export function buildAudioExtractArgs(input: string, outputWav: string): string[] {
+  return ['-y', '-i', input, '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le', outputWav];
+}
+
+export function buildPeaksArgs(input: string): string[] {
+  return ['-v', 'error', '-i', input, '-ar', '8000', '-ac', '1', '-f', 's16le', '-'];
+}
+
+export async function runFfprobe(input: string, spawn: SpawnFn): Promise<number> {
+  const { stdout } = spawn('ffprobe', buildProbeArgs(input));
+  const match = stdout.match(/duration=([\d.]+)/);
+  if (!match) throw new Error('ffprobe: duration not found');
+  return Number(match[1]);
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `npx vitest run tests/media.test.ts`
+Expected: PASS (4 tests).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add electron/media.ts tests/media.test.ts
+git commit -m "feat: ffmpeg arg builders with injectable runner"
+```
+
+---
+
+### Task 11: Whisper runner (arg builder + progress parser)
+
+**Files:**
+- Create: `electron/whisper.ts`
+- Test: `tests/whisper.test.ts`
+
+- [ ] **Step 1: Write the failing test**
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { buildWhisperArgs, parseProgressLine } from '../electron/whisper.js';
+
+describe('buildWhisperArgs', () => {
+  it('forces Vietnamese with word timestamps as JSON', () => {
+    expect(buildWhisperArgs('model.bin', 'audio.wav', 'out.json')).toEqual([
+      '-m', 'model.bin', '-l', 'vi', '-f', 'audio.wav', '--output-json', '--max-len', '1', '-oj', 'out.json',
+    ]);
+  });
+});
+
+describe('parseProgressLine', () => {
+  it('reads percent from whisper progress output', () => {
+    expect(parseProgressLine('whisper_print_progress_callback: progress = 42%')).toBe(42);
+    expect(parseProgressLine('some other log line')).toBeNull();
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `npx vitest run tests/whisper.test.ts`
+Expected: FAIL with "Failed to resolve import ../electron/whisper.js".
+
+- [ ] **Step 3: Write minimal implementation**
+
+```ts
+export function buildWhisperArgs(modelPath: string, audioWav: string, outJson: string): string[] {
+  return ['-m', modelPath, '-l', 'vi', '-f', audioWav, '--output-json', '--max-len', '1', '-oj', outJson];
+}
+
+export function parseProgressLine(line: string): number | null {
+  const match = line.match(/progress\s*=\s*(\d{1,3})%/);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return value >= 0 && value <= 100 ? value : null;
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `npx vitest run tests/whisper.test.ts`
+Expected: PASS (2 tests).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add electron/whisper.ts tests/whisper.test.ts
+git commit -m "feat: whisper sidecar args and progress parser"
+```
+
+---
+
+### Task 12: Project reducer with undo (pure)
+
+**Files:**
+- Create: `src/state/reducer.ts`
+- Test: `tests/reducer.test.ts`
+
+- [ ] **Step 1: Write the failing test**
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { createState, reduce } from '../src/state/reducer.js';
+import { DEFAULT_SETTINGS } from '../core/defaults.js';
+
+describe('reducer undo', () => {
+  it('applies a cut and undoes the whole auto batch at once', () => {
+    let s = createState({ name: 'ep1', sourcePath: 'x.mp4', durationSec: 100, preset: 'vertical', settings: DEFAULT_SETTINGS });
+    s = reduce(s, {
+      type: 'apply-auto-cuts',
+      clips: [
+        { id: 'k1', track: 'V1', start: 0, end: 10, label: 'keep 1' },
+        { id: 'k2', track: 'V1', start: 20, end: 100, label: 'keep 2' },
+      ],
+    });
+    expect(s.present.clips).toHaveLength(2);
+    s = reduce(s, { type: 'undo' });
+    expect(s.present.clips).toHaveLength(0);
+  });
+
+  it('splits a clip at a frame boundary', () => {
+    let s = createState({ name: 'ep1', sourcePath: 'x.mp4', durationSec: 100, preset: 'vertical', settings: DEFAULT_SETTINGS });
+    s = reduce(s, { type: 'apply-auto-cuts', clips: [{ id: 'k1', track: 'V1', start: 0, end: 10, label: 'keep' }] });
+    s = reduce(s, { type: 'split-clip', id: 'k1', at: 4 });
+    expect(s.present.clips.map((c) => [c.start, c.end])).toEqual([[0, 4], [4, 10]]);
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `npx vitest run tests/reducer.test.ts`
+Expected: FAIL with "Failed to resolve import ../src/state/reducer.js".
+
+- [ ] **Step 3: Write minimal implementation**
+
+```ts
+import type { Clip, Preset, Project, Settings } from '../../core/types.js';
+
+export interface Init {
+  name: string;
+  sourcePath: string;
+  durationSec: number;
+  preset: Preset;
+  settings: Settings;
+}
+
+export type Action =
+  | { type: 'apply-auto-cuts'; clips: Clip[] }
+  | { type: 'split-clip'; id: string; at: number }
+  | { type: 'delete-clip'; id: string }
+  | { type: 'undo' }
+  | { type: 'redo' };
+
+export interface State { past: Project[]; present: Project; future: Project[]; }
+
+export function createState(init: Init): State {
+  const present: Project = { version: 1, ...init, proposals: [], captions: [] };
+  return { past: [], present, future: [] };
+}
+
+function push(state: State, present: Project): State {
+  return { past: [...state.past, state.present], present, future: [] };
+}
+
+export function reduce(state: State, action: Action): State {
+  switch (action.type) {
+    case 'apply-auto-cuts':
+      return push(state, { ...state.present, clips: action.clips });
+    case 'split-clip': {
+      const clips: Clip[] = [];
+      for (const c of state.present.clips) {
+        if (c.id !== action.id || action.at <= c.start || action.at >= c.end) {
+          clips.push(c);
+          continue;
+        }
+        clips.push({ ...c, end: action.at });
+        clips.push({ ...c, id: `${c.id}-b`, start: action.at });
+      }
+      return push(state, { ...state.present, clips });
+    }
+    case 'delete-clip':
+      return push(state, { ...state.present, clips: state.present.clips.filter((c) => c.id !== action.id) });
+    case 'undo': {
+      if (state.past.length === 0) return state;
+      const present = state.past[state.past.length - 1];
+      return { past: state.past.slice(0, -1), present, future: [state.present, ...state.future] };
+    }
+    case 'redo': {
+      if (state.future.length === 0) return state;
+      const [present, ...future] = state.future;
+      return { past: [...state.past, state.present], present, future };
+    }
+  }
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `npx vitest run tests/reducer.test.ts`
+Expected: PASS (2 tests).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/state/reducer.ts tests/reducer.test.ts
+git commit -m "feat: timeline reducer with batch undo"
+```
+
+---
+
+### Task 13: Timeline component + component test
+
+**Files:**
+- Create: `src/components/Timeline.tsx`
+- Test: `tests/Timeline.test.tsx`
+
+- [ ] **Step 1: Write the failing test**
+
+```tsx
+// @vitest-environment jsdom
+import { describe, expect, it, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { Timeline } from '../src/components/Timeline.js';
+import type { Clip } from '../core/types.js';
+
+const clips: Clip[] = [
+  { id: 'k1', track: 'V1', start: 0, end: 10, label: 'keep 1' },
+  { id: 'k2', track: 'V1', start: 20, end: 30, label: 'keep 2' },
+];
+
+describe('Timeline', () => {
+  it('renders one block per clip and splits on button click', async () => {
+    const onSplit = vi.fn();
+    const { container } = render(<Timeline clips={clips} onSplit={onSplit} onDelete={() => undefined} />);
+    expect(container.querySelectorAll('[data-clip]').length).toBe(2);
+    const { fireEvent } = await import('@testing-library/react');
+    fireEvent.click(screen.getByTestId('split-k1'));
+    expect(onSplit).toHaveBeenCalledWith('k1');
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `npx vitest run tests/Timeline.test.tsx`
+Expected: FAIL with "Failed to resolve import ../src/components/Timeline.js".
+
+- [ ] **Step 3: Write minimal implementation**
+
+```tsx
+import type { Clip } from '../../core/types.js';
+
+interface Props {
+  clips: Clip[];
+  onSplit: (id: string) => void;
+  onDelete: (id: string) => void;
+}
+
+export function Timeline({ clips, onSplit, onDelete }: Props): JSX.Element {
+  return (
+    <div data-timeline>
+      {clips.map((c) => (
+        <div key={c.id} data-clip={c.id} data-track={c.track}>
+          <span>{c.label} ({c.start}s–{c.end}s)</span>
+          <button data-testid={`split-${c.id}`} onClick={() => onSplit(c.id)}>Split</button>
+          <button data-testid={`delete-${c.id}`} onClick={() => onDelete(c.id)}>Delete</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `npx vitest run tests/Timeline.test.tsx`
+Expected: PASS (1 test).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/components/Timeline.tsx tests/Timeline.test.tsx
+git commit -m "feat: basic timeline component with split/delete"
+```
+
+---
+
+### Task 14: Remotion composition (preview + render share one component)
+
+**Files:**
+- Create: `src/remotion/PodcastComposition.tsx`
+- Create: `src/remotion/Root.tsx`
+
+- [ ] **Step 1: Write the composition (no test — verified visually via Player in Task 15)**
+
+```tsx
+import { AbsoluteFill, OffthreadVideo, Sequence } from 'remotion';
+import type { CaptionLine, Clip } from '../../core/types.js';
+
+export interface PodcastProps {
+  sourcePath: string;
+  clips: Clip[];
+  captions: CaptionLine[];
+}
+
+export function PodcastComposition({ sourcePath, clips, captions }: PodcastProps): JSX.Element {
+  const video = clips.filter((c) => c.track === 'V1');
+  return (
+    <AbsoluteFill style={{ backgroundColor: '#000' }}>
+      {video.map((c) => (
+        <Sequence key={c.id} from={Math.round(c.start * 30)} durationInFrames={Math.round((c.end - c.start) * 30)}>
+          <OffthreadVideo src={sourcePath} trimBefore={Math.round(c.start * 30)} trimAfter={Math.round(c.end * 30)} />
+        </Sequence>
+      ))}
+      {captions.map((l) => (
+        <Sequence key={l.id} from={Math.round(l.start * 30)} durationInFrames={Math.max(1, Math.round((l.end - l.start) * 30))}>
+          <AbsoluteFill style={{ justifyContent: 'flex-end', alignItems: 'center', paddingBottom: 460 }}>
+            <div style={{ color: '#fff', fontSize: 64, fontWeight: 800, textAlign: 'center', padding: '0 48px' }}>{l.text}</div>
+          </AbsoluteFill>
+        </Sequence>
+      ))}
+    </AbsoluteFill>
+  );
+}
+```
+
+```tsx
+import { Composition } from 'remotion';
+import { PodcastComposition } from './PodcastComposition.js';
+
+export function RemotionRoot(): JSX.Element {
+  return (
+    <Composition
+      id="PodcastVertical"
+      component={PodcastComposition}
+      durationInFrames={1800}
+      fps={30}
+      width={1080}
+      height={1920}
+      defaultProps={{ sourcePath: '', clips: [], captions: [] }}
+    />
+  );
+}
+```
+
+- [ ] **Step 2: Typecheck**
+
+Run: `npm run typecheck`
+Expected: passes. If `OffthreadVideo` trim props mismatch the installed Remotion version, fix prop names to match installed types (typecheck is the gate).
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add src/remotion/PodcastComposition.tsx src/remotion/Root.tsx
+git commit -m "feat: remotion composition for segments and captions"
+```
+
+---
+
+### Task 15: App shell wiring + full suite green
+
+**Files:**
+- Create: `src/main.tsx`
+- Create: `src/App.tsx`
+- Create: `electron/preload.ts`
+- Create: `electron/main.ts`
+
+- [ ] **Step 1: Write renderer entry and shell**
+
+```tsx
+import { createRoot } from 'react-dom/client';
+import { App } from './App.js';
+
+createRoot(document.getElementById('root')!).render(<App />);
+```
+
+```tsx
+import { useReducer } from 'react';
+import { DEFAULT_SETTINGS } from '../core/defaults.js';
+import { createState, reduce } from './state/reducer.js';
+import { Timeline } from './components/Timeline.js';
+
+export function App(): JSX.Element {
+  const [state, dispatch] = useReducer(
+    reduce,
+    createState({ name: 'untitled', sourcePath: '', durationSec: 0, preset: 'vertical', settings: DEFAULT_SETTINGS }),
+  );
+  return (
+    <div>
+      <h1>Auto Podcast Editor (MVP)</h1>
+      <Timeline
+        clips={state.present.clips}
+        onSplit={(id) => dispatch({ type: 'split-clip', id, at: state.present.clips.find((c) => c.id === id)!.start + 1 })}
+        onDelete={(id) => dispatch({ type: 'delete-clip', id })}
+      />
+    </div>
+  );
+}
+```
+
+- [ ] **Step 2: Write preload and main (thin, manual-verified via dev run)**
+
+```ts
+import { contextBridge, ipcRenderer } from 'electron';
+
+contextBridge.exposeInMainWorld('api', {
+  probe: (filePath: string) => ipcRenderer.invoke('media:probe', filePath),
+  transcribe: (filePath: string) => ipcRenderer.invoke('ai:transcribe', filePath),
+  render: (projectPath: string) => ipcRenderer.invoke('job:render', projectPath),
+});
+```
+
+```ts
+import { app, BrowserWindow, ipcMain } from 'electron';
+import { join } from 'node:path';
+import { JobQueue } from './jobs.js';
+import { runFfprobe } from './media.js';
+import { spawnSync } from 'node:child_process';
+
+const queue = new JobQueue();
+
+async function createWindow(): Promise<void> {
+  const win = new BrowserWindow({ width: 1400, height: 900, webPreferences: { preload: join(__dirname, 'preload.js') } });
+  if (process.env['ELECTRON_RENDERER_URL']) await win.loadURL(process.env['ELECTRON_RENDERER_URL']);
+}
+
+ipcMain.handle('media:probe', (_e, filePath: string) =>
+  queue.enqueue('probe', async () =>
+    runFfprobe(filePath, (cmd, args) => ({ stdout: spawnSync(cmd, args, { encoding: 'utf8' }).stdout as string })),
+  ),
+);
+
+void app.whenReady().then(createWindow);
+```
+
+- [ ] **Step 3: Run full suite + typecheck**
+
+Run: `npm run typecheck`
+Expected: passes.
+
+Run: `npm test`
+Expected: all suites pass (projectFile, waveform, cutDetection, caption, safezone, exportText, defaults, jobs, media, whisper, reducer, Timeline = 12 files).
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/main.tsx src/App.tsx electron/preload.ts electron/main.ts
+git commit -m "feat: app shell with timeline wired to reducer"
+```
+
+---
+
+### Task 16: Render outputs + transcribe/render IPC wiring + sample pipeline test
+
+**Files:**
+- Create: `electron/render.ts`
+- Modify: `electron/main.ts`
+- Test: `tests/render.test.ts`
+- Test: `tests/pipeline.test.ts`
+
+- [ ] **Step 1: Write the failing tests**
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { buildRemotionRenderArgs, buildRenderOutputs } from '../electron/render.js';
+
+describe('buildRenderOutputs', () => {
+  it('derives output paths from project path and preset', () => {
+    const out = buildRenderOutputs('C:/work/ep1.ape.json', 'vertical');
+    expect(out.mp4).toContain('vertical.mp4');
+    expect(out.srt.endsWith('captions.srt')).toBe(true);
+    expect(out.captionTxt.endsWith('caption.txt')).toBe(true);
+    expect(out.thumb.endsWith('thumb.png')).toBe(true);
+  });
+});
+
+describe('buildRemotionRenderArgs', () => {
+  it('renders the vertical composition with a props file', () => {
+    expect(buildRemotionRenderArgs('PodcastVertical', 'C:/work/ep1/vertical.mp4', 'C:/work/ep1/props.json')).toEqual([
+      'remotion', 'render', 'PodcastVertical', 'C:/work/ep1/vertical.mp4', '--props', 'C:/work/ep1/props.json',
+    ]);
+  });
+});
+```
+
+```ts
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { chunkCaption } from '../core/caption.js';
+import { proposeCuts } from '../core/cutDetection.js';
+import { DEFAULT_SETTINGS } from '../core/defaults.js';
+import { buildCaptionTxt, buildSrt } from '../core/exportText.js';
+import { loadProject, saveProject } from '../core/projectFile.js';
+import type { Project } from '../core/types.js';
+
+describe('sample pipeline', () => {
+  it('goes from transcript fixture to export texts and saved project', async () => {
+    const words = [
+      { text: 'xin', start: 0.0, end: 0.3 },
+      { text: 'chào', start: 0.4, end: 0.7 },
+      { text: 'ừm', start: 0.8, end: 1.1 },
+      { text: 'các', start: 2.5, end: 2.7 },
+      { text: 'bạn', start: 2.8, end: 3.0 },
+    ];
+    const proposals = proposeCuts(words, [], DEFAULT_SETTINGS);
+    expect(proposals.some((p) => p.kind === 'filler')).toBe(true);
+    expect(proposals.some((p) => p.kind === 'silence')).toBe(true);
+    const kept = words.filter((w) => !proposals.some((p) => p.kind === 'filler' && p.start === w.start));
+    const captions = chunkCaption(kept);
+    expect(buildSrt(captions)).toContain('xin chào');
+    const dir = mkdtempSync(join(tmpdir(), 'ape-pipe-'));
+    const project: Project = {
+      version: 1, name: 'sample', sourcePath: 'sample.mp4', durationSec: 4,
+      clips: [], proposals, captions, preset: 'vertical', settings: DEFAULT_SETTINGS,
+    };
+    const file = join(dir, 'sample.ape.json');
+    await saveProject(file, project);
+    expect(await loadProject(file)).toEqual(project);
+    expect(buildCaptionTxt('Sample', ['#a', '#b', '#c', '#d'])).toContain('#d');
+  });
+});
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `npx vitest run tests/render.test.ts tests/pipeline.test.ts`
+Expected: FAIL with "Failed to resolve import ../electron/render.js".
+
+- [ ] **Step 3: Write minimal implementation**
+
+```ts
+import { join } from 'node:path';
+
+export interface RenderOutputs { mp4: string; srt: string; captionTxt: string; thumb: string; }
+
+export function buildRenderOutputs(projectPath: string, preset: 'vertical' | 'horizontal'): RenderOutputs {
+  const dir = projectPath.replace(/\.ape\.json$/, '');
+  const suffix = preset === 'vertical' ? 'vertical' : 'horizontal';
+  return {
+    mp4: join(dir, `${suffix}.mp4`),
+    srt: join(dir, 'captions.srt'),
+    captionTxt: join(dir, 'caption.txt'),
+    thumb: join(dir, 'thumb.png'),
+  };
+}
+
+export function buildRemotionRenderArgs(compId: string, outMp4: string, propsPath: string): string[] {
+  return ['remotion', 'render', compId, outMp4, '--props', propsPath];
+}
+```
+
+- [ ] **Step 4: Wire transcribe + render handlers in main.ts**
+
+Add to `electron/main.ts`:
+
+```ts
+import { buildAudioExtractArgs } from './media.js';
+import { buildWhisperArgs } from './whisper.js';
+import { buildRemotionRenderArgs, buildRenderOutputs } from './render.js';
+
+ipcMain.handle('ai:transcribe', (_e, filePath: string, workDir: string, modelPath: string) =>
+  queue.enqueue('transcribe', async () => {
+    const wav = `${workDir}/audio16k.wav`;
+    spawnSync('ffmpeg', buildAudioExtractArgs(filePath, wav), { stdio: 'ignore' });
+    const outJson = `${workDir}/transcript.json`;
+    spawnSync('whisper-cli', buildWhisperArgs(modelPath, wav, outJson), { stdio: 'ignore' });
+    return outJson;
+  }),
+);
+
+ipcMain.handle('job:render', (_e, projectPath: string, preset: 'vertical' | 'horizontal', propsPath: string) =>
+  queue.enqueue('render', async () => {
+    const out = buildRenderOutputs(projectPath, preset);
+    spawnSync('npx', buildRemotionRenderArgs('PodcastVertical', out.mp4, propsPath), { stdio: 'inherit' });
+    return out;
+  }),
+);
+```
+
+- [ ] **Step 5: Run full suite + typecheck**
+
+Run: `npm run typecheck`
+Expected: passes.
+
+Run: `npm test`
+Expected: all 14 suites pass (12 from Task 15 plus render and pipeline).
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add electron/render.ts electron/main.ts tests/render.test.ts tests/pipeline.test.ts
+git commit -m "feat: render outputs, job IPC wiring, sample pipeline test"
+```
+
+---
+
+## Out of scope for this plan (follow-up plans)
+
+- P1: auto SFX/transition, progressive chunk reveal UI, horizontal preset, Undo batch across polish, WaveformView/CutProposals/Preview/SettingsPanel full components.
+- P2: beat-cut Recap mode, face-tracking reframe, concurrency settings, semantic topic detection.
+
+## Manual QA checklist (run after Task 15)
+
+1. `npm run dev` opens the app window.
+2. Import a 2-minute talking-head MP4, probe returns duration.
+3. Transcript appears with word timestamps; silence/filler proposals listed with reasons.
+4. Apply cuts → clips appear on timeline; split/delete/undo/redo work.
+5. Captions generate 5–7 words/line inside the safezone overlay.
+6. Preview plays segments + captions in Remotion Player.
+7. Render outputs MP4 + SRT + caption.txt + thumbnail.
+8. Cancel mid-transcribe keeps finished work; relaunch restores autosaved project.
