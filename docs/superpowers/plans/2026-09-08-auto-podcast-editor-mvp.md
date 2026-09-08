@@ -806,8 +806,11 @@ describe('chunkCaption edge cases', () => {
     const words = [...w(5), { text: 'thật…?', start: 2.0, end: 2.3 }, ...w(2, 2.4)];
     const lines = chunkCaption(words);
     expect(lines[0].text.endsWith('thật…?')).toBe(true);
-    const words2 = [...w(5), { text: 'rồi."', start: 2.0, end: 2.3 }];
-    expect(chunkCaption(words2)[0].text.endsWith('rồi."')).toBe(true);
+    // trailing words force the break: old regex leaves 'rồi."' mid-line
+    const words2 = [...w(5), { text: 'rồi."', start: 2.0, end: 2.3 }, ...w(3, 2.4)];
+    const lines2 = chunkCaption(words2);
+    expect(lines2[0].text.endsWith('rồi."')).toBe(true);
+    expect(lines2).toHaveLength(2);
   });
 
   it('emits unique ms-precision ids', () => {
