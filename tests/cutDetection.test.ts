@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeFiller, proposeCuts } from '../core/cutDetection.js';
+import { dedupeIds, normalizeFiller, proposeCuts } from '../core/cutDetection.js';
 import type { Settings } from '../core/types.js';
 
 const settings: Settings = { silenceSec: 0.6, fillerMaxSec: 1.0, lowAudioDb: -40, topicPauseSec: 2.0, model: 'base' };
@@ -46,15 +46,15 @@ describe('normalizeFiller', () => {
 });
 
 describe('hardened proposals', () => {
-  it('gives distinct ids to close starts (ms precision + end)', () => {
+  it('keeps distinct ids for two close filler runs', () => {
     const words = [
       { text: 'ừm', start: 10.001, end: 10.05 },
-      { text: 'ừm', start: 10.06, end: 10.1 },
+      { text: 'ừm', start: 10.6, end: 10.65 },
       { text: 'rồi', start: 12.0, end: 12.3 },
     ];
-    const out = proposeCuts(words, [], settings);
-    const ids = out.map((p) => p.id);
-    expect(new Set(ids).size).toBe(ids.length);
+    const fillers = proposeCuts(words, [], settings).filter((p) => p.kind === 'filler');
+    expect(fillers).toHaveLength(2);
+    expect(fillers[0].id).not.toBe(fillers[1].id);
   });
 
   it('merges a repeated filler run into one proposal', () => {
@@ -75,5 +75,33 @@ describe('hardened proposals', () => {
       { text: 'xong', start: 1.5, end: 1.8 },
     ];
     expect(proposeCuts(words, [], settings).some((p) => p.kind === 'filler')).toBe(true);
+  });
+});
+
+describe('filler run boundary', () => {
+  const mk = (gap: number) => ([
+    { text: 'ừm', start: 1.0, end: 2.0 },
+    { text: 'ừm', start: 2.0 + gap, end: 2.2 + gap },
+    { text: 'xong', start: 5.0, end: 5.3 },
+  ]);
+
+  it('splits runs at exactly 0.5s gap', () => {
+    expect(proposeCuts(mk(0.5), [], settings).filter((p) => p.kind === 'filler')).toHaveLength(2);
+  });
+
+  it('merges runs below 0.5s gap', () => {
+    expect(proposeCuts(mk(0.49), [], settings).filter((p) => p.kind === 'filler')).toHaveLength(1);
+  });
+});
+
+describe('normalizeFiller unicode', () => {
+  it('handles NFD input', () => {
+    expect(normalizeFiller('ừm'.normalize('NFD'))).toBe('ừm');
+  });
+});
+
+describe('dedupeIds', () => {
+  it('suffixes collisions deterministically', () => {
+    expect(dedupeIds(['a', 'a', 'b', 'a'])).toEqual(['a', 'a-2', 'b', 'a-3']);
   });
 });

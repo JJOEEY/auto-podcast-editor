@@ -5,7 +5,16 @@ const FILLER_LEXICON = new Set(['ừm', 'ừ', 'à', 'ờ', 'ơ', 'nhỉ', 'um',
 const FILLER_MERGE_GAP_SEC = 0.5;
 
 export function normalizeFiller(text: string): string {
-  return text.trim().toLowerCase().replace(/[^\p{L}]/gu, '');
+  return text.normalize('NFC').trim().toLowerCase().replace(/[^\p{L}\p{M}]/gu, '');
+}
+
+export function dedupeIds(ids: string[]): string[] {
+  const seen = new Map<string, number>();
+  return ids.map((id) => {
+    const n = (seen.get(id) ?? 0) + 1;
+    seen.set(id, n);
+    return n === 1 ? id : `${id}-${n}`;
+  });
 }
 
 function proposalId(kind: string, start: number, end: number): string {
@@ -25,7 +34,7 @@ export function proposeCuts(words: Word[], _peaks: number[], settings: Settings)
       start,
       end,
       kind: 'filler',
-      reason: run.length === 1 ? `filler word "${run[0].text}"` : `filler run x${run.length}`,
+      reason: run.length === 1 ? `filler word ${JSON.stringify(run[0].text)}` : `filler run x${run.length}`,
       confidence: 0.85,
     });
     run = [];
@@ -56,5 +65,7 @@ export function proposeCuts(words: Word[], _peaks: number[], settings: Settings)
   }
   // NOTE: a filler flanked by pauses yields touching proposals (silence+filler+silence);
   // downstream treats them as one cut range (merge at apply time, P1).
-  return out.sort((a, b) => a.start - b.start);
+  const sorted = out.sort((a, b) => a.start - b.start);
+  const ids = dedupeIds(sorted.map((p) => p.id));
+  return sorted.map((p, i) => ({ ...p, id: ids[i] }));
 }
