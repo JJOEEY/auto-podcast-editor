@@ -1093,6 +1093,101 @@ git commit -m "feat: SRT and TikTok caption builders"
 
 ---
 
+### Task 7b: Harden export builders (follow-up from Task 7 review)
+
+**Files:**
+- Modify: `core/exportText.ts`
+- Modify: `tests/exportText.test.ts` (keep 2 existing tests green)
+
+- [ ] **Step 1: Add tests**
+
+```ts
+describe('buildSrt edges', () => {
+  it('carries rounding into minutes', () => {
+    const srt = buildSrt([{ id: 'cc-1', start: 59.9999, end: 60.5, text: 'x' }]);
+    expect(srt).toContain('00:01:00,000 --> 00:01:00,500');
+  });
+
+  it('separates cues with blank lines and terminates the file', () => {
+    const srt = buildSrt([
+      { id: 'cc-1', start: 0, end: 1, text: 'one' },
+      { id: 'cc-2', start: 2, end: 3, text: 'two' },
+    ]);
+    expect(srt).toBe('1\n00:00:00,000 --> 00:00:01,000\none\n\n2\n00:00:02,000 --> 00:00:03,000\ntwo\n\n');
+  });
+
+  it('returns empty string for no lines', () => {
+    expect(buildSrt([])).toBe('');
+  });
+
+  it('rejects invalid timestamps', () => {
+    expect(() => buildSrt([{ id: 'cc-x', start: 5, end: 3, text: 'bad' }])).toThrow(RangeError);
+    expect(() => buildSrt([{ id: 'cc-x', start: NaN, end: 3, text: 'bad' }])).toThrow(RangeError);
+  });
+});
+
+describe('buildCaptionTxt edges', () => {
+  it('rejects wrong hashtag count and malformed tags', () => {
+    expect(() => buildCaptionTxt('t', ['#a', '#b'])).toThrow();
+    expect(() => buildCaptionTxt('t', ['podcast', '#b', '#c', '#d'])).toThrow();
+    expect(() => buildCaptionTxt('t', ['#', '#b', '#c', '#d'])).toThrow();
+    expect(() => buildCaptionTxt('t', ['#a b', '#b', '#c', '#d'])).toThrow();
+  });
+});
+```
+
+- [ ] **Step 2: Run to verify failures**
+
+Run: `npx vitest run tests/exportText.test.ts`
+Expected: FAIL (no guards, no final newline, length-only hashtag check).
+
+- [ ] **Step 3: Implement**
+
+In `core/exportText.ts`:
+1. `stamp` guards: `if (!Number.isFinite(sec) || sec < 0) throw new RangeError('invalid timestamp');`
+2. `buildSrt`: `if (lines.length === 0) return '';` per-line `if (!(l.start <= l.end)) throw new RangeError('cue start after end');` (also rejects NaN), return `...join('\n') + '\n'`.
+3. `buildCaptionTxt`: keep count check, add `for (const h of hashtags) if (!/^#[^\s#]+$/.test(h)) throw new Error('malformed hashtag');`
+
+Reference:
+
+```ts
+function stamp(sec: number): string {
+  if (!Number.isFinite(sec) || sec < 0) throw new RangeError('invalid timestamp');
+  ...
+}
+
+export function buildSrt(lines: CaptionLine[]): string {
+  if (lines.length === 0) return '';
+  return (
+    lines
+      .map((l, i) => {
+        if (!(l.start <= l.end)) throw new RangeError('cue start after end');
+        return `${i + 1}\n${stamp(l.start)} --> ${stamp(l.end)}\n${l.text}\n`;
+      })
+      .join('\n') + '\n'
+  );
+}
+
+export function buildCaptionTxt(title: string, hashtags: string[]): string {
+  if (hashtags.length !== 4) throw new Error('caption requires exactly 4 hashtags');
+  for (const h of hashtags) if (!/^#[^\s#]+$/.test(h)) throw new Error('malformed hashtag');
+  return `${title}\n\n${hashtags.join(' ')}`;
+}
+```
+
+- [ ] **Step 4: Verify** — exportText tests PASS (7), `npm run typecheck` passes, full suite no regressions.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add core/exportText.ts tests/exportText.test.ts
+git commit -m "fix: validate export inputs, terminate SRT file"
+```
+
+Deferred (not this task): `\r\n` line endings, cue-text sanitization (blank lines/`-->` inside text) — only if a strict player complains.
+
+---
+
 ### Task 8: Defaults module
 
 **Files:**
