@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
+    "outDir": "out",
+    "types": ["node"]
+  },
+  "include": ["core", "electron", "src", "tests", "electron.vite.config.ts", "vitest.config.ts"]
+}
