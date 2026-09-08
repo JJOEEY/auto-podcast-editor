@@ -593,6 +593,113 @@ git commit -m "feat: ms-precision proposal ids and filler normalization"
 
 ---
 
+### Task 4c: Fix quality-review findings on cutDetection (follow-up)
+
+**Files:**
+- Modify: `core/cutDetection.ts`
+- Modify: `tests/cutDetection.test.ts` (rewrite the vacuous distinct-ids test, add boundary/NFD/dedupe tests; keep all other tests green)
+
+- [ ] **Step 1: Rewrite weak test + add new tests**
+
+Replace the `hardened proposals` > `gives distinct ids to close starts` test with one that actually forces two proposals (gap 0.55s ≥ merge threshold):
+
+```ts
+it('keeps distinct ids for two close filler runs', () => {
+  const words = [
+    { text: 'ừm', start: 10.001, end: 10.05 },
+    { text: 'ừm', start: 10.6, end: 10.65 },
+    { text: 'rồi', start: 12.0, end: 12.3 },
+  ];
+  const fillers = proposeCuts(words, [], settings).filter((p) => p.kind === 'filler');
+  expect(fillers).toHaveLength(2);
+  expect(fillers[0].id).not.toBe(fillers[1].id);
+});
+```
+
+Append:
+
+```ts
+describe('filler run boundary', () => {
+  const mk = (gap: number) => ([
+    { text: 'ừm', start: 1.0, end: 2.0 },
+    { text: 'ừm', start: 2.0 + gap, end: 2.2 + gap },
+    { text: 'xong', start: 5.0, end: 5.3 },
+  ]);
+
+  it('splits runs at exactly 0.5s gap', () => {
+    expect(proposeCuts(mk(0.5), [], settings).filter((p) => p.kind === 'filler')).toHaveLength(2);
+  });
+
+  it('merges runs below 0.5s gap', () => {
+    expect(proposeCuts(mk(0.49), [], settings).filter((p) => p.kind === 'filler')).toHaveLength(1);
+  });
+});
+
+describe('normalizeFiller unicode', () => {
+  it('handles NFD input', () => {
+    expect(normalizeFiller('ừm'.normalize('NFD'))).toBe('ừm');
+  });
+});
+
+describe('dedupeIds', () => {
+  it('suffixes collisions deterministically', () => {
+    expect(dedupeIds(['a', 'a', 'b', 'a'])).toEqual(['a', 'a-2', 'b', 'a-3']);
+  });
+});
+```
+
+- [ ] **Step 2: Run tests to verify new/rewritten ones fail**
+
+Run: `npx vitest run tests/cutDetection.test.ts`
+Expected: FAIL (no NFC handling, no dedupeIds export, boundary unpinned).
+
+- [ ] **Step 3: Implement fixes in `core/cutDetection.ts`**
+
+1. Normalizer NFC-first and keep marks: `text.normalize('NFC').trim().toLowerCase().replace(/[^\p{L}\p{M}]/gu, '')`.
+2. Single-word reason via `JSON.stringify(run[0].text)` (no raw interpolation).
+3. Export `dedupeIds(ids: string[]): string[]` (suffix `-2`, `-3`… on repeats, first keeps base).
+4. Apply `dedupeIds` to proposal ids after sorting (deterministic: same input → same output).
+
+Reference for the changed parts:
+
+```ts
+export function normalizeFiller(text: string): string {
+  return text.normalize('NFC').trim().toLowerCase().replace(/[^\p{L}\p{M}]/gu, '');
+}
+
+export function dedupeIds(ids: string[]): string[] {
+  const seen = new Map<string, number>();
+  return ids.map((id) => {
+    const n = (seen.get(id) ?? 0) + 1;
+    seen.set(id, n);
+    return n === 1 ? id : `${id}-${n}`;
+  });
+}
+```
+
+And at the end of `proposeCuts`, before `return`:
+
+```ts
+const sorted = out.sort((a, b) => a.start - b.start);
+const ids = dedupeIds(sorted.map((p) => p.id));
+return sorted.map((p, i) => ({ ...p, id: ids[i] }));
+```
+
+- [ ] **Step 4: Run tests + typecheck + full suite**
+
+Run: `npx vitest run tests/cutDetection.test.ts` → PASS (11 tests). `npm run typecheck` → passes. `npx vitest run` → no regressions.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add core/cutDetection.ts tests/cutDetection.test.ts
+git commit -m "fix: unique proposal ids, NFC filler matching, boundary tests"
+```
+
+Deferred to P1 (documented, not this task): total-run duration cap for merged filler runs; merging touching silence+filler+silence into one range at apply time.
+
+---
+
 ### Task 5: Caption chunking (pure)
 
 **Files:**
