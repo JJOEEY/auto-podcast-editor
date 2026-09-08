@@ -1058,7 +1058,7 @@ export type Action =
 export interface State { past: Project[]; present: Project; future: Project[]; }
 
 export function createState(init: Init): State {
-  const present: Project = { version: 1, ...init, proposals: [], captions: [] };
+  const present: Project = { version: 1, ...init, clips: [], proposals: [], captions: [] };
   return { past: [], present, future: [] };
 }
 
@@ -1483,7 +1483,47 @@ ipcMain.handle('job:render', (_e, projectPath: string, preset: 'vertical' | 'hor
 );
 ```
 
-- [ ] **Step 5: Run full suite + typecheck**
+- [ ] **Step 5: Harden loadProject with shape guard (follow-up from Task 2 review)**
+
+Extend the `node:fs` import in `tests/projectFile.test.ts`:
+
+```ts
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+```
+
+Append this test:
+
+```ts
+it('rejects non-object JSON and wrong-shape projects', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ape-'));
+  const bad = join(dir, 'bad.ape.json');
+  writeFileSync(bad, '"just a string"', 'utf8');
+  await expect(loadProject(bad)).rejects.toThrow();
+  writeFileSync(bad, JSON.stringify({ version: 1, name: 'x' }), 'utf8');
+  await expect(loadProject(bad)).rejects.toThrow('invalid project shape');
+});
+```
+
+Update `loadProject` in `core/projectFile.ts`:
+
+```ts
+export async function loadProject(filePath: string): Promise<Project> {
+  const raw = await readFile(filePath, 'utf8');
+  const parsed: unknown = JSON.parse(raw);
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw new Error('invalid project file');
+  const candidate = parsed as Partial<Project>;
+  if (candidate.version !== 1) throw new Error(`unsupported project version: ${String(candidate.version)}`);
+  if (!Array.isArray(candidate.clips) || typeof candidate.settings !== 'object' || candidate.settings === null) {
+    throw new Error('invalid project shape');
+  }
+  return candidate as Project;
+}
+```
+
+Run: `npx vitest run tests/projectFile.test.ts`
+Expected: PASS (2 tests).
+
+- [ ] **Step 6: Run full suite + typecheck**
 
 Run: `npm run typecheck`
 Expected: passes.
@@ -1491,10 +1531,10 @@ Expected: passes.
 Run: `npm test`
 Expected: all 14 suites pass (12 from Task 15 plus render and pipeline).
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add electron/render.ts electron/main.ts tests/render.test.ts tests/pipeline.test.ts
+git add electron/render.ts electron/main.ts tests/render.test.ts tests/pipeline.test.ts core/projectFile.ts tests/projectFile.test.ts
 git commit -m "feat: render outputs, job IPC wiring, sample pipeline test"
 ```
 
