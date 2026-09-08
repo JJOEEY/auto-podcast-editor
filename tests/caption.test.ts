@@ -42,10 +42,15 @@ describe('chunkCaption edge cases', () => {
     expect(lines2).toHaveLength(2);
   });
 
-  it('emits unique ms-precision ids', () => {
+  it('emits unique ids, suffixed on ms collision', () => {
     const lines = chunkCaption(w(20));
     const ids = lines.map((l) => l.id);
     expect(new Set(ids).size).toBe(ids.length);
-    for (const id of ids) expect(id).toMatch(/^cc-\d+$/);
+    for (const id of ids) expect(id).toMatch(/^cc-\d+(-\d+)?$/);
+    const dupes = Array.from({ length: 8 }, (_, i) => ({ text: `k${i}`, start: 1.0004, end: 1.0004 + 0.1 }));
+    const dlines = chunkCaption(dupes);
+    expect(dlines).toHaveLength(2);
+    expect(dlines[0].id).toBe('cc-1000');
+    expect(dlines[1].id).toBe('cc-1000-2');
   });
 });
