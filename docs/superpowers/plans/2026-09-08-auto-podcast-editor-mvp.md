@@ -76,7 +76,7 @@ tests/*.test.ts                   # one test file per core module + reducer + jo
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "electron": "^33.0.0",
-    "electron-vite": "^2.5.0",
+    "electron-vite": "^2.3.0",
     "jsdom": "^25.0.0",
     "remotion": "^4.0.0",
     "@remotion/cli": "^4.0.0",
@@ -84,12 +84,15 @@ tests/*.test.ts                   # one test file per core module + reducer + jo
     "@remotion/renderer": "^4.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.0",
     "typescript": "^5.6.0",
     "vite": "^5.4.0",
     "vitest": "^2.1.0"
   }
 }
 ```
+
+NOTE (verified Task 1): `electron-vite` 2.x stops at `2.3.0` (`2.5.0` does not exist); `@vitejs/plugin-react` is required by the renderer config.
 
 - [ ] **Step 2: Write tsconfig.json**
 
@@ -105,7 +108,7 @@ tests/*.test.ts                   # one test file per core module + reducer + jo
     "outDir": "out",
     "types": ["node"]
   },
-  "include": ["core", "electron", "src", "tests"]
+  "include": ["core", "electron", "src", "tests", "electron.vite.config.ts", "vitest.config.ts"]
 }
 ```
 
