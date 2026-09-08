@@ -936,6 +936,91 @@ git commit -m "feat: vertical video safezone helpers"
 
 ---
 
+### Task 6b: Harden safeArea degenerate inputs (follow-up from Task 6 review)
+
+**Files:**
+- Modify: `core/safezone.ts`
+- Modify: `tests/safezone.test.ts`
+
+- [ ] **Step 1: Add tests (import VERTICAL_INSETS instead of redefining)**
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { clampToSafezone, isInsideSafezone, safeArea, VERTICAL_INSETS } from '../core/safezone.js';
+
+const canvas = { w: 1080, h: 1920 };
+
+describe('safeArea', () => {
+  it('computes the 1080x1920 safe rect', () => {
+    expect(safeArea(canvas, VERTICAL_INSETS)).toEqual({ x: 48, y: 160, w: 984, h: 1340 });
+  });
+
+  it('never returns negative size for insets larger than canvas', () => {
+    const area = safeArea({ w: 100, h: 100 }, VERTICAL_INSETS);
+    expect(area.w).toBeGreaterThanOrEqual(0);
+    expect(area.h).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('clamp edge cases', () => {
+  it('shrinks oversized rects and pins them inside', () => {
+    const out = clampToSafezone({ x: 0, y: 0, w: 2000, h: 3000 }, canvas, VERTICAL_INSETS);
+    expect(isInsideSafezone(out, canvas, VERTICAL_INSETS)).toBe(true);
+    expect(out.w).toBe(984);
+  });
+
+  it('treats exact edges as inside (inclusive)', () => {
+    expect(isInsideSafezone({ x: 48, y: 160, w: 984, h: 1340 }, canvas, VERTICAL_INSETS)).toBe(true);
+  });
+});
+```
+
+Keep the 3 existing tests, but change line 4 to import `VERTICAL_INSETS` and use it in place of the local `insets` const.
+
+- [ ] **Step 2: Run to verify failures**
+
+Run: `npx vitest run tests/safezone.test.ts`
+Expected: FAIL (negative sizes, no clamp guarantee asserted).
+
+- [ ] **Step 3: Implement**
+
+In `safeArea`, clamp sizes at zero:
+
+```ts
+export function safeArea(canvas: { w: number; h: number }, insets: Insets): Rect {
+  return {
+    x: insets.left,
+    y: insets.top,
+    w: Math.max(0, canvas.w - insets.left - insets.right),
+    h: Math.max(0, canvas.h - insets.top - insets.bottom),
+  };
+}
+```
+
+Add doc comments (inclusive edges; clamp shrinks oversized rects and pins to safe-area origin):
+
+```ts
+/** Edges inclusive: a rect exactly filling the safe area counts as inside. */
+export function isInsideSafezone( ...
+/** Shrinks rects larger than the safe area, then pins to the safe-area origin (top-left). */
+export function clampToSafezone( ...
+```
+
+Change nothing else.
+
+- [ ] **Step 4: Verify** — safezone tests PASS (7), `npm run typecheck` passes, full suite no regressions.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add core/safezone.ts tests/safezone.test.ts
+git commit -m "fix: non-negative safe area, edge-case tests"
+```
+
+Deferred (not this task): moving Rect/Insets to core/types.ts, HORIZONTAL_INSETS preset switch, caption text-to-Rect bridge (caption-render task).
+
+---
+
 ### Task 7: Export text builders (SRT + caption.txt)
 
 **Files:**
