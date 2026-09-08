@@ -449,6 +449,150 @@ git commit -m "feat: silence and filler cut proposals from transcript"
 
 ---
 
+### Task 4b: Harden proposal IDs + filler normalization (follow-up from Task 4 review)
+
+**Files:**
+- Modify: `core/cutDetection.ts`
+- Modify: `tests/cutDetection.test.ts`
+
+- [ ] **Step 1: Extend tests (keep the existing 3 untouched)**
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { normalizeFiller, proposeCuts } from '../core/cutDetection.js';
+import type { Settings } from '../core/types.js';
+
+const settings: Settings = { silenceSec: 0.6, fillerMaxSec: 1.0, lowAudioDb: -40, topicPauseSec: 2.0, model: 'base' };
+
+describe('normalizeFiller', () => {
+  it('strips punctuation and case', () => {
+    expect(normalizeFiller('ừm,')).toBe('ừm');
+    expect(normalizeFiller('À.')).toBe('à');
+    expect(normalizeFiller('...')).toBe('');
+  });
+});
+
+describe('hardened proposals', () => {
+  it('gives distinct ids to close starts (ms precision + end)', () => {
+    const words = [
+      { text: 'ừm', start: 10.001, end: 10.05 },
+      { text: 'ừm', start: 10.06, end: 10.1 },
+      { text: 'rồi', start: 12.0, end: 12.3 },
+    ];
+    const out = proposeCuts(words, [], settings);
+    const ids = out.map((p) => p.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('merges a repeated filler run into one proposal', () => {
+    const words = [
+      { text: 'ừm,', start: 1.0, end: 1.3 },
+      { text: 'ừm', start: 1.4, end: 1.7 },
+      { text: 'vâng', start: 3.0, end: 3.3 },
+    ];
+    const fillers = proposeCuts(words, [], settings).filter((p) => p.kind === 'filler');
+    expect(fillers).toHaveLength(1);
+    expect(fillers[0].start).toBeCloseTo(1.0);
+    expect(fillers[0].end).toBeCloseTo(1.7);
+  });
+
+  it('matches expanded lexicon', () => {
+    const words = [
+      { text: 'uh', start: 0.0, end: 0.3 },
+      { text: 'xong', start: 1.5, end: 1.8 },
+    ];
+    expect(proposeCuts(words, [], settings).some((p) => p.kind === 'filler')).toBe(true);
+  });
+});
+```
+
+- [ ] **Step 2: Run tests to verify the new ones fail**
+
+Run: `npx vitest run tests/cutDetection.test.ts`
+Expected: FAIL (normalizeFiller not exported, old cs-precision ids collide).
+
+- [ ] **Step 3: Implement normalizer, ms-precision ids, run merging**
+
+```ts
+import type { CutProposal, Settings, Word } from './types.js';
+
+const FILLER_LEXICON = new Set(['ừm', 'ừ', 'à', 'ờ', 'ơ', 'nhỉ', 'um', 'uh', 'ờm']);
+
+const FILLER_MERGE_GAP_SEC = 0.5;
+
+export function normalizeFiller(text: string): string {
+  return text.trim().toLowerCase().replace(/[^\p{L}]/gu, '');
+}
+
+function proposalId(kind: string, start: number, end: number): string {
+  return `${kind}-${Math.round(start * 1000)}-${Math.round(end * 1000)}`;
+}
+
+export function proposeCuts(words: Word[], _peaks: number[], settings: Settings): CutProposal[] {
+  // _peaks reserved for low-audio detection (ProposalKind 'low-audio') — do not remove.
+  const out: CutProposal[] = [];
+  let run: Word[] = [];
+  const flushRun = () => {
+    if (run.length === 0) return;
+    const start = run[0].start;
+    const end = run[run.length - 1].end;
+    out.push({
+      id: proposalId('filler', start, end),
+      start,
+      end,
+      kind: 'filler',
+      reason: run.length === 1 ? `filler word "${run[0].text}"` : `filler run x${run.length}`,
+      confidence: 0.85,
+    });
+    run = [];
+  };
+  for (const w of words) {
+    const isFiller = FILLER_LEXICON.has(normalizeFiller(w.text)) && w.end - w.start <= settings.fillerMaxSec;
+    if (!isFiller) {
+      flushRun();
+      continue;
+    }
+    if (run.length > 0 && w.start - run[run.length - 1].end >= FILLER_MERGE_GAP_SEC) flushRun();
+    run.push(w);
+  }
+  flushRun();
+  for (let i = 0; i + 1 < words.length; i++) {
+    const gapStart = words[i].end;
+    const gapEnd = words[i + 1].start;
+    if (gapEnd - gapStart >= settings.silenceSec) {
+      out.push({
+        id: proposalId('silence', gapStart, gapEnd),
+        start: gapStart,
+        end: gapEnd,
+        kind: 'silence',
+        reason: `silence ${(gapEnd - gapStart).toFixed(2)}s`,
+        confidence: gapEnd - gapStart >= 2 * settings.silenceSec ? 0.95 : 0.75,
+      });
+    }
+  }
+  // NOTE: a filler flanked by pauses yields touching proposals (silence+filler+silence);
+  // downstream treats them as one cut range (merge at apply time, P1).
+  return out.sort((a, b) => a.start - b.start);
+}
+```
+
+- [ ] **Step 4: Run tests + typecheck**
+
+Run: `npx vitest run tests/cutDetection.test.ts`
+Expected: PASS (7 tests: 3 old + 4 new).
+
+Run: `npm run typecheck`
+Expected: passes.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add core/cutDetection.ts tests/cutDetection.test.ts
+git commit -m "feat: ms-precision proposal ids and filler normalization"
+```
+
+---
+
 ### Task 5: Caption chunking (pure)
 
 **Files:**
