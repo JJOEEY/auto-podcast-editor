@@ -1,5 +1,12 @@
-export function buildWhisperArgs(modelPath: string, audioWav: string, outJson: string): string[] {
-  return ['-m', modelPath, '-l', 'vi', '-f', audioWav, '--output-json', '--max-len', '1', '-oj', outJson];
+export function buildWhisperArgs(modelPath: string, audioWav: string, outBase: string): string[] {
+  return [
+    '-m', modelPath, '-l', 'vi', '-f', audioWav,
+    '--max-len', '1', '--print-progress', '--output-json', '--output-file', outBase,
+  ];
+}
+
+export function whisperJsonPath(outBase: string): string {
+  return `${outBase}.json`;
 }
 
 export function parseProgressLine(line: string): number | null {

@@ -2338,16 +2338,16 @@ Add to `electron/main.ts`:
 
 ```ts
 import { buildAudioExtractArgs } from './media.js';
-import { buildWhisperArgs } from './whisper.js';
+import { buildWhisperArgs, whisperJsonPath } from './whisper.js';
 import { buildRemotionRenderArgs, buildRenderOutputs } from './render.js';
 
 ipcMain.handle('ai:transcribe', (_e, filePath: string, workDir: string, modelPath: string) =>
   queue.enqueue('transcribe', async () => {
     const wav = `${workDir}/audio16k.wav`;
     spawnSync('ffmpeg', buildAudioExtractArgs(filePath, wav), { stdio: 'ignore' });
-    const outJson = `${workDir}/transcript.json`;
-    spawnSync('whisper-cli', buildWhisperArgs(modelPath, wav, outJson), { stdio: 'ignore' });
-    return outJson;
+    const outBase = `${workDir}/transcript`;
+    spawnSync('whisper-cli', buildWhisperArgs(modelPath, wav, outBase), { stdio: 'ignore' });
+    return whisperJsonPath(outBase);
   }),
 );
 
