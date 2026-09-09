@@ -1868,6 +1868,46 @@ git commit -m "fix: correct whisper-cli flags (-of basename, -pp progress)"
 
 ---
 
+### Task 11c: Guard whisperJsonPath + fix plan flag typo (follow-up from 11b review)
+
+**Files:**
+- Modify: `electron/whisper.ts`
+- Modify: `tests/whisper.test.ts`
+- Modify: `docs/superpowers/plans/2026-09-08-auto-podcast-editor-mvp.md` (this section's intro: `-oj/--output-json` → `-ojson/--output-json`)
+
+- [ ] **Step 1: Add test**
+
+```ts
+it('does not double-append .json', () => {
+  expect(whisperJsonPath('out/transcript.json')).toBe('out/transcript.json');
+});
+```
+
+(Append inside the existing `whisperJsonPath` describe.)
+
+- [ ] **Step 2: Run to verify failure** — `npx vitest run tests/whisper.test.ts` → FAIL.
+
+- [ ] **Step 3: Implement** — in `electron/whisper.ts`:
+
+```ts
+export function whisperJsonPath(outBase: string): string {
+  return outBase.endsWith('.json') ? outBase : `${outBase}.json`;
+}
+```
+
+Fix the intro line of Task 11b in the plan file: `-oj/--output-json` → `-ojson/--output-json` (correct short forms: `-ojson`, `-of`, `-pp`).
+
+- [ ] **Step 4: Verify** — whisper tests PASS (5), `npm run typecheck` passes, full suite no regressions.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add electron/whisper.ts tests/whisper.test.ts docs/superpowers/plans/2026-09-08-auto-podcast-editor-mvp.md
+git commit -m "fix: idempotent whisperJsonPath, correct flag shorts in plan"
+```
+
+---
+
 ### Task 12: Project reducer with undo (pure)
 
 **Files:**
