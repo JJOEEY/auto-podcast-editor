@@ -24,3 +24,34 @@ describe('reducer undo', () => {
     expect(s.present.clips.map((c) => [c.start, c.end])).toEqual([[0, 4], [4, 10]]);
   });
 });
+
+describe('reducer robustness', () => {
+  const init = () => createState({ name: 'ep1', sourcePath: 'x.mp4', durationSec: 100, preset: 'vertical', settings: DEFAULT_SETTINGS });
+
+  it('keeps ids unique across double splits', () => {
+    let s = reduce(init(), { type: 'apply-auto-cuts', clips: [{ id: 'k1', track: 'V1', start: 0, end: 10, label: 'k' }] });
+    s = reduce(s, { type: 'split-clip', id: 'k1', at: 4 });
+    s = reduce(s, { type: 'split-clip', id: 'k1', at: 2 });
+    const ids = s.present.clips.map((c) => c.id);
+    expect(s.present.clips).toHaveLength(3);
+    expect(new Set(ids).size).toBe(3);
+    const after = reduce(s, { type: 'delete-clip', id: ids[1] });
+    expect(after.present.clips).toHaveLength(2);
+  });
+
+  it('redo round-trips an undone split', () => {
+    let s = reduce(init(), { type: 'apply-auto-cuts', clips: [{ id: 'k1', track: 'V1', start: 0, end: 10, label: 'k' }] });
+    s = reduce(s, { type: 'split-clip', id: 'k1', at: 4 });
+    s = reduce(s, { type: 'undo' });
+    expect(s.present.clips).toHaveLength(1);
+    s = reduce(s, { type: 'redo' });
+    expect(s.present.clips.map((c) => [c.start, c.end])).toEqual([[0, 4], [4, 10]]);
+  });
+
+  it('treats no-op delete/split as identity (same reference, redo kept)', () => {
+    let s = reduce(init(), { type: 'apply-auto-cuts', clips: [{ id: 'k1', track: 'V1', start: 0, end: 10, label: 'k' }] });
+    expect(reduce(s, { type: 'delete-clip', id: 'missing' })).toBe(s);
+    expect(reduce(s, { type: 'split-clip', id: 'missing', at: 4 })).toBe(s);
+    expect(reduce(s, { type: 'split-clip', id: 'k1', at: 0 })).toBe(s);
+  });
+});

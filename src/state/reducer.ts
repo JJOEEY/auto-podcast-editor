@@ -29,20 +29,24 @@ function push(state: State, present: Project): State {
 export function reduce(state: State, action: Action): State {
   switch (action.type) {
     case 'apply-auto-cuts':
-      return push(state, { ...state.present, clips: action.clips });
+      return push(state, { ...state.present, clips: [...action.clips] });
     case 'split-clip': {
       const clips: Clip[] = [];
+      let didSplit = false;
       for (const c of state.present.clips) {
         if (c.id !== action.id || action.at <= c.start || action.at >= c.end) {
           clips.push(c);
           continue;
         }
+        didSplit = true;
         clips.push({ ...c, end: action.at });
-        clips.push({ ...c, id: `${c.id}-b`, start: action.at });
+        clips.push({ ...c, id: `${c.id}@${action.at}`, start: action.at });
       }
+      if (!didSplit) return state;
       return push(state, { ...state.present, clips });
     }
     case 'delete-clip':
+      if (!state.present.clips.some((c) => c.id === action.id)) return state;
       return push(state, { ...state.present, clips: state.present.clips.filter((c) => c.id !== action.id) });
     case 'undo': {
       if (state.past.length === 0) return state;
@@ -54,5 +58,7 @@ export function reduce(state: State, action: Action): State {
       const [present, ...future] = state.future;
       return { past: [...state.past, state.present], present, future };
     }
+    default:
+      return state;
   }
 }
