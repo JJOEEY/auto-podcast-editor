@@ -2049,6 +2049,8 @@ git commit -m "feat: remotion composition for segments and captions"
 - Create: `electron/preload.ts`
 - Create: `electron/main.ts`
 
+Wiring notes from Task 10b review (must follow): run `runPeaks`/transcode OFF the Electron main thread (sync spawn of ~57MB pipe freezes UI — use worker or async chunked spawn); decide the empty-peaks error contract (throw in caller if `samples.length === 0`); `runPeaks` LE-reinterpret is correct on all target hosts (do not "fix" with per-sample DataView).
+
 - [ ] **Step 1: Write renderer entry and shell**
 
 ```tsx
