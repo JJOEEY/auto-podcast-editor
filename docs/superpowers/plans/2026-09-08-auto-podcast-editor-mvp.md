@@ -1250,6 +1250,80 @@ git commit -m "feat: approved default settings and ranges"
 
 ---
 
+### Task 8b: Freeze defaults + relational range test (follow-up from Task 8 review)
+
+**Files:**
+- Modify: `core/defaults.ts`
+- Modify: `tests/defaults.test.ts` (keep existing test green)
+
+- [ ] **Step 1: Add tests**
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { createDefaultSettings, DEFAULT_SETTINGS, SETTINGS_RANGES } from '../core/defaults.js';
+
+describe('settings ranges', () => {
+  it('keeps every default inside its range', () => {
+    expect(DEFAULT_SETTINGS.silenceSec).toBeGreaterThanOrEqual(SETTINGS_RANGES.silenceSec.min);
+    expect(DEFAULT_SETTINGS.silenceSec).toBeLessThanOrEqual(SETTINGS_RANGES.silenceSec.max);
+    expect(DEFAULT_SETTINGS.fillerMaxSec).toBeGreaterThanOrEqual(SETTINGS_RANGES.fillerMaxSec.min);
+    expect(DEFAULT_SETTINGS.fillerMaxSec).toBeLessThanOrEqual(SETTINGS_RANGES.fillerMaxSec.max);
+    expect(DEFAULT_SETTINGS.topicPauseSec).toBeGreaterThanOrEqual(SETTINGS_RANGES.topicPauseSec.min);
+    expect(DEFAULT_SETTINGS.topicPauseSec).toBeLessThanOrEqual(SETTINGS_RANGES.topicPauseSec.max);
+  });
+});
+
+describe('createDefaultSettings', () => {
+  it('returns independent copies', () => {
+    const a = createDefaultSettings();
+    a.silenceSec = 9;
+    expect(createDefaultSettings().silenceSec).toBe(DEFAULT_SETTINGS.silenceSec);
+  });
+
+  it('leaves the shared default frozen', () => {
+    expect(() => {
+      (DEFAULT_SETTINGS as { silenceSec: number }).silenceSec = 9;
+    }).toThrow(TypeError);
+  });
+});
+```
+
+- [ ] **Step 2: Run to verify failures**
+
+Run: `npx vitest run tests/defaults.test.ts`
+Expected: FAIL (no createDefaultSettings export, default not frozen).
+
+- [ ] **Step 3: Implement** — in `core/defaults.ts`, freeze the literal and add factory:
+
+```ts
+export const DEFAULT_SETTINGS: Settings = Object.freeze({
+  silenceSec: 0.6,
+  fillerMaxSec: 1.0,
+  lowAudioDb: -40,
+  topicPauseSec: 2.0,
+  model: 'base',
+});
+
+export function createDefaultSettings(): Settings {
+  return { ...DEFAULT_SETTINGS };
+}
+```
+
+Keep `SETTINGS_RANGES` unchanged. Values unchanged.
+
+- [ ] **Step 4: Verify** — defaults tests PASS (4), `npm run typecheck` passes, full suite no regressions.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add core/defaults.ts tests/defaults.test.ts
+git commit -m "fix: freeze shared defaults, add settings factory"
+```
+
+Note for Task 15: App shell must init state with `createDefaultSettings()`, never `DEFAULT_SETTINGS` by reference.
+
+---
+
 ### Task 9: Sequential job queue (Electron, pure)
 
 **Files:**
@@ -1792,14 +1866,14 @@ createRoot(document.getElementById('root')!).render(<App />);
 
 ```tsx
 import { useReducer } from 'react';
-import { DEFAULT_SETTINGS } from '../core/defaults.js';
+import { createDefaultSettings } from '../core/defaults.js';
 import { createState, reduce } from './state/reducer.js';
 import { Timeline } from './components/Timeline.js';
 
 export function App(): JSX.Element {
   const [state, dispatch] = useReducer(
     reduce,
-    createState({ name: 'untitled', sourcePath: '', durationSec: 0, preset: 'vertical', settings: DEFAULT_SETTINGS }),
+    createState({ name: 'untitled', sourcePath: '', durationSec: 0, preset: 'vertical', settings: createDefaultSettings() }),
   );
   return (
     <div>
