@@ -1631,6 +1631,86 @@ git commit -m "feat: ffmpeg arg builders with injectable runner"
 
 ---
 
+### Task 10b: Harden media runners (follow-up from Task 10 review)
+
+**Files:**
+- Modify: `electron/media.ts`
+- Modify: `tests/media.test.ts` (keep green; update extract-args expectation with `-vn`, tighten `toBe`)
+
+- [ ] **Step 1: Add/adjust tests**
+
+Change `toBeCloseTo(120.5)` → `toBe(120.5)`, add `'-vn'` to the extract-args expectation (after `'-y', '-i', 'in.mp4'`), and append:
+
+```ts
+describe('runFfprobe edges', () => {
+  it('forwards cmd and builder args to spawn', async () => {
+    const spawn = vi.fn().mockReturnValue({ stdout: 'duration=10.5\n' });
+    await runFfprobe('x.mp4', spawn);
+    expect(spawn).toHaveBeenCalledWith('ffprobe', buildProbeArgs('x.mp4'));
+  });
+
+  it('rejects missing, N/A, and malformed durations', async () => {
+    const bad = (stdout: string) => vi.fn().mockReturnValue({ stdout });
+    await expect(runFfprobe('x.mp4', bad(''))).rejects.toThrow('duration not found');
+    await expect(runFfprobe('x.mp4', bad('duration=N/A\n'))).rejects.toThrow('invalid duration');
+    await expect(runFfprobe('x.mp4', bad('duration=1.2.3\n'))).rejects.toThrow('invalid duration');
+  });
+});
+
+describe('runPeaks', () => {
+  it('decodes s16le bytes and drops a trailing odd byte', () => {
+    const spawn = vi.fn().mockReturnValue(new Uint8Array([0x00, 0x00, 0xff, 0x7f, 0x00, 0x80, 0x01]));
+    const samples = runPeaks('in.mp4', spawn);
+    expect(spawn).toHaveBeenCalledWith('ffmpeg', buildPeaksArgs('in.mp4'));
+    expect(Array.from(samples)).toEqual([0, 32767, -32768]);
+  });
+});
+```
+
+- [ ] **Step 2: Run to verify failures**
+
+Run: `npx vitest run tests/media.test.ts`
+Expected: FAIL (no binary runner, weak guards, missing -vn).
+
+- [ ] **Step 3: Implement** in `electron/media.ts`:
+1. `buildAudioExtractArgs`: insert `'-vn'` after the input (`['-y', '-i', input, '-vn', ...]`).
+2. Anchored finite-checked probe parse:
+
+```ts
+export async function runFfprobe(input: string, spawn: SpawnFn): Promise<number> {
+  const { stdout } = spawn('ffprobe', buildProbeArgs(input));
+  const match = stdout.match(/^duration=(.+)$/m);
+  if (!match) throw new Error('ffprobe: duration not found');
+  const value = Number(match[1].trim());
+  if (!Number.isFinite(value)) throw new Error(`ffprobe: invalid duration: ${match[1].trim()}`);
+  return value;
+}
+```
+
+3. Binary peaks runner (string stdout would corrupt s16le bytes):
+
+```ts
+export type SpawnBinaryFn = (cmd: string, args: string[]) => Uint8Array;
+
+export function runPeaks(input: string, spawn: SpawnBinaryFn): Int16Array {
+  const raw = spawn('ffmpeg', buildPeaksArgs(input));
+  const usable = raw.byteLength - (raw.byteLength % 2);
+  const copy = raw.buffer.slice(raw.byteOffset, raw.byteOffset + usable);
+  return new Int16Array(copy);
+}
+```
+
+- [ ] **Step 4: Verify** — media tests PASS (8), `npm run typecheck` passes, full suite no regressions.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add electron/media.ts tests/media.test.ts
+git commit -m "fix: binary peaks runner, strict probe parsing"
+```
+
+---
+
 ### Task 11: Whisper runner (arg builder + progress parser)
 
 **Files:**
