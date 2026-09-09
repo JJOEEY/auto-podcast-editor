@@ -1350,7 +1350,7 @@ describe('JobQueue', () => {
     expect(order).toEqual(['a-start', 'a-end', 'b-start', 'b-end']);
   });
 
-  it('reports queue position for waiting jobs', () => {
+  it('reports queue position for waiting jobs', async () => {
     const q = new JobQueue();
     q.enqueue('transcribe', async () => { await tick(); });
     const events: string[] = [];
@@ -1398,10 +1398,18 @@ export class JobQueue {
 
   enqueue<T>(name: string, job: () => Promise<T>): Promise<T> {
     if (this.cancelled) return Promise.reject(new Error('cancelled'));
-    if (this.pending > 0) this.emit({ type: 'queued', name });
+    // Captured at enqueue: the head job counts as current work and is allowed
+    // to finish after cancelAll(); only jobs that waited behind it are stopped.
+    // (Must be captured here — the chained callback runs on a later microtask,
+    // so by the time it runs a synchronous cancelAll() has already set the flag.)
+    const wasQueued = this.pending > 0;
+    if (wasQueued) this.emit({ type: 'queued', name });
     this.pending += 1;
     const run = this.tail.then(async () => {
-      if (this.cancelled) throw new Error('cancelled');
+      if (this.cancelled && wasQueued) {
+        this.pending -= 1;
+        throw new Error('cancelled');
+      }
       this.emit({ type: 'started', name });
       try {
         const result = await job();
