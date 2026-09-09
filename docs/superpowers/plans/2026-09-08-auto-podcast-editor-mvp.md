@@ -2120,6 +2120,76 @@ Deferred (not this task): history cap (~50-100), float-to-frame quantization at 
 
 ---
 
+### Task 12c: Harden reducer inputs + pin history tests (follow-up from 12b review)
+
+**Files:**
+- Modify: `src/state/reducer.ts`
+- Modify: `tests/reducer.test.ts`
+
+- [ ] **Step 1: Strengthen tests**
+
+In the double-split test, replace the length/Set assertions with exact expectations:
+
+```ts
+    expect(s.present.clips.map((c) => c.id)).toEqual(['k1', 'k1@2', 'k1@4']);
+    expect(s.present.clips.map((c) => [c.start, c.end])).toEqual([[0, 2], [2, 4], [4, 10]]);
+```
+
+Append:
+
+```ts
+describe('reducer input hardening', () => {
+  const init = () => createState({ name: 'ep1', sourcePath: 'x.mp4', durationSec: 100, preset: 'vertical', settings: DEFAULT_SETTINGS });
+
+  it('rejects non-finite split points', () => {
+    const s = reduce(init(), { type: 'apply-auto-cuts', clips: [{ id: 'k1', track: 'V1', start: 0, end: 10, label: 'k' }] });
+    expect(reduce(s, { type: 'split-clip', id: 'k1', at: NaN })).toBe(s);
+  });
+
+  it('deep-copies clips on apply (caller mutation cannot leak)', () => {
+    const clips = [{ id: 'k1', track: 'V1' as const, start: 0, end: 10, label: 'k' }];
+    const s = reduce(init(), { type: 'apply-auto-cuts', clips });
+    clips[0].end = 99;
+    clips.push({ id: 'k2', track: 'V1' as const, start: 20, end: 30, label: 'x' });
+    expect(s.present.clips).toHaveLength(1);
+    expect(s.present.clips[0].end).toBe(10);
+  });
+
+  it('preserves the redo stack across no-ops', () => {
+    let s = reduce(init(), { type: 'apply-auto-cuts', clips: [{ id: 'k1', track: 'V1', start: 0, end: 10, label: 'k' }] });
+    s = reduce(s, { type: 'split-clip', id: 'k1', at: 4 });
+    s = reduce(s, { type: 'undo' });
+    expect(s.future).toHaveLength(1);
+    s = reduce(s, { type: 'delete-clip', id: 'missing' });
+    expect(s.future).toHaveLength(1);
+    s = reduce(s, { type: 'redo' });
+    expect(s.present.clips).toHaveLength(2);
+  });
+});
+```
+
+- [ ] **Step 2: Run to verify failures**
+
+Run: `npx vitest run tests/reducer.test.ts`
+Expected: FAIL (NaN slips through, shallow alias, weaker assertions).
+
+- [ ] **Step 3: Implement** — in `src/state/reducer.ts`:
+1. `apply-auto-cuts`: `clips: action.clips.map((c) => ({ ...c }))`.
+2. `split-clip`: first line of the case block: `if (!Number.isFinite(action.at)) return state;`
+
+Change nothing else.
+
+- [ ] **Step 4: Verify** — reducer tests PASS (8), `npm run typecheck` passes, full suite no regressions.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/state/reducer.ts tests/reducer.test.ts
+git commit -m "fix: reject NaN splits, deep-copy applied clips"
+```
+
+---
+
 ### Task 13: Timeline component + component test
 
 **Files:**
