@@ -1447,6 +1447,108 @@ git commit -m "feat: sequential heavy-job queue with cancel"
 
 ---
 
+### Task 9b: Harden job queue lifecycle + listeners (follow-up from Task 9 review)
+
+**Files:**
+- Modify: `electron/jobs.ts`
+- Modify: `tests/jobs.test.ts` (keep 3 existing tests green)
+
+- [ ] **Step 1: Add tests**
+
+```ts
+describe('JobQueue lifecycle', () => {
+  it('accepts new jobs after reset following a cancel', async () => {
+    const q = new JobQueue();
+    const ran: string[] = [];
+    const slow = q.enqueue('transcribe', async () => { await new Promise((r) => setTimeout(r, 20)); ran.push('slow'); });
+    const dropped = q.enqueue('render', async () => { ran.push('never'); });
+    q.cancelAll();
+    await expect(dropped).rejects.toThrow('cancelled');
+    await slow;
+    q.reset();
+    await q.enqueue('render2', async () => { ran.push('render2'); });
+    expect(ran).toEqual(['slow', 'render2']);
+  });
+
+  it('isolates throwing listeners and supports unsubscribe', async () => {
+    const q = new JobQueue();
+    const seen: string[] = [];
+    q.onEvent(() => { throw new Error('boom'); });
+    const off = q.onEvent((e) => { seen.push(`${e.type}:${e.name}`); });
+    off();
+    const seen2: string[] = [];
+    q.onEvent((e) => { seen2.push(`${e.type}:${e.name}`); });
+    await q.enqueue('job', async () => 'ok');
+    expect(seen).toEqual([]);
+    expect(seen2).toContain('done:job');
+  });
+
+  it('emits cancelled per dropped job', async () => {
+    const q = new JobQueue();
+    const events: string[] = [];
+    q.onEvent((e) => { events.push(`${e.type}:${e.name}`); });
+    const slow = q.enqueue('transcribe', async () => { await new Promise((r) => setTimeout(r, 20)); });
+    const dropped = q.enqueue('render', async () => undefined);
+    q.cancelAll();
+    await expect(dropped).rejects.toThrow('cancelled');
+    await slow;
+    expect(events).toContain('cancelled:render');
+  });
+});
+```
+
+- [ ] **Step 2: Run to verify failures**
+
+Run: `npx vitest run tests/jobs.test.ts`
+Expected: FAIL (no reset export, listener throw breaks flow, no per-job cancelled event).
+
+- [ ] **Step 3: Implement** — in `electron/jobs.ts`:
+1. `onEvent` returns unsubscribe: push, return `() => { this.listeners = this.listeners.filter((l) => l !== fn); }`.
+2. `emit` iterates a snapshot with try/catch: `for (const fn of [...this.listeners]) { try { fn(e); } catch { /* listener errors must not break job flow */ } }`.
+3. Cancel-drop path emits `{ type: 'cancelled', name }` before throwing.
+4. Add `reset()`: `if (this.pending > 0) throw new Error('reset while jobs running'); this.cancelled = false;`
+
+Reference for changed members (rest of class unchanged):
+
+```ts
+onEvent(fn: (e: JobEvent) => void): () => void {
+  this.listeners.push(fn);
+  return () => {
+    this.listeners = this.listeners.filter((l) => l !== fn);
+  };
+}
+
+private emit(e: JobEvent): void {
+  for (const fn of [...this.listeners]) {
+    try {
+      fn(e);
+    } catch {
+      /* listener errors must not break job flow */
+    }
+  }
+}
+
+reset(): void {
+  if (this.pending > 0) throw new Error('reset while jobs running');
+  this.cancelled = false;
+}
+```
+
+And in the cancel-drop branch: `this.emit({ type: 'cancelled', name });` before `throw new Error('cancelled');`.
+
+- [ ] **Step 4: Verify** — jobs tests PASS (6), `npm run typecheck` passes, full suite no regressions.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add electron/jobs.ts tests/jobs.test.ts
+git commit -m "fix: queue reset, listener isolation, per-job cancelled event"
+```
+
+Note for Tasks 15/16: main must call `queue.reset()` when starting a new auto-run after a cancel (queue drains first — reset throws while busy, so await settle first).
+
+---
+
 ### Task 10: FFmpeg arg builders + runners (injectable spawn)
 
 **Files:**
