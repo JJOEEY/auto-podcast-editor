@@ -2195,6 +2195,46 @@ git commit -m "fix: reject NaN splits, deep-copy applied clips"
 **Files:**
 - Create: `src/components/Timeline.tsx`
 - Test: `tests/Timeline.test.tsx`
+- Modify: `src/state/reducer.ts` + `tests/reducer.test.ts` (Step 0 only)
+
+- [ ] **Step 0: Isolate init.settings (follow-up from 12c review — commit separately first)**
+
+Test additions in `tests/reducer.test.ts`:
+
+```ts
+  it('rejects infinite split points too', () => {
+    const s = reduce(init(), { type: 'apply-auto-cuts', clips: [{ id: 'k1', track: 'V1', start: 0, end: 10, label: 'k' }] });
+    expect(reduce(s, { type: 'split-clip', id: 'k1', at: Infinity })).toBe(s);
+  });
+```
+
+(Append inside the `reducer input hardening` describe; `init` helper already exists there.)
+
+```ts
+  it('isolates init.settings (caller mutation cannot leak)', () => {
+    const settings = createDefaultSettings();
+    const s = createState({ name: 'e', sourcePath: 'x', durationSec: 1, preset: 'vertical', settings });
+    settings.silenceSec = 9;
+    expect(s.present.settings.silenceSec).toBe(0.6);
+  });
+```
+
+(Add `createDefaultSettings` to the `../core/defaults.js` import — note the current test file imports `DEFAULT_SETTINGS`; extend it.)
+
+Impl in `src/state/reducer.ts` `createState`:
+
+```ts
+const present: Project = { version: 1, ...init, settings: { ...init.settings }, clips: [], proposals: [], captions: [] };
+```
+
+Verify: new tests fail first (Infinity splits, settings leak), then pass; commit alone:
+
+```bash
+git add src/state/reducer.ts tests/reducer.test.ts
+git commit -m "fix: isolate init.settings, cover infinite splits"
+```
+
+Then proceed to Step 1 below.
 
 - [ ] **Step 1: Write the failing test**
 
