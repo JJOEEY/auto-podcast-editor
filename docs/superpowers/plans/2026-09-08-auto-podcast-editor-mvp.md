@@ -1700,7 +1700,7 @@ export function runPeaks(input: string, spawn: SpawnBinaryFn): Int16Array {
 }
 ```
 
-- [ ] **Step 4: Verify** — media tests PASS (8), `npm run typecheck` passes, full suite no regressions.
+- [ ] **Step 4: Verify** — media tests PASS (7: 4 existing + 3 new), `npm run typecheck` passes, full suite no regressions.
 
 - [ ] **Step 5: Commit**
 
