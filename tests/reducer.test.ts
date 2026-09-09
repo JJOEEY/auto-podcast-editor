@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createState, reduce } from '../src/state/reducer.js';
-import { DEFAULT_SETTINGS } from '../core/defaults.js';
+import { DEFAULT_SETTINGS, createDefaultSettings } from '../core/defaults.js';
 
 describe('reducer undo', () => {
   it('applies a cut and undoes the whole auto batch at once', () => {
@@ -82,5 +82,17 @@ describe('reducer input hardening', () => {
     expect(s.future).toHaveLength(1);
     s = reduce(s, { type: 'redo' });
     expect(s.present.clips).toHaveLength(2);
+  });
+
+  it('rejects infinite split points too', () => {
+    const s = reduce(init(), { type: 'apply-auto-cuts', clips: [{ id: 'k1', track: 'V1', start: 0, end: 10, label: 'k' }] });
+    expect(reduce(s, { type: 'split-clip', id: 'k1', at: Infinity })).toBe(s);
+  });
+
+  it('isolates init.settings (caller mutation cannot leak)', () => {
+    const settings = createDefaultSettings();
+    const s = createState({ name: 'e', sourcePath: 'x', durationSec: 1, preset: 'vertical', settings });
+    settings.silenceSec = 9;
+    expect(s.present.settings.silenceSec).toBe(0.6);
   });
 });

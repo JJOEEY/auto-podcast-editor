@@ -18,7 +18,7 @@ export type Action =
 export interface State { past: Project[]; present: Project; future: Project[]; }
 
 export function createState(init: Init): State {
-  const present: Project = { version: 1, ...init, clips: [], proposals: [], captions: [] };
+  const present: Project = { version: 1, ...init, settings: { ...init.settings }, clips: [], proposals: [], captions: [] };
   return { past: [], present, future: [] };
 }
 
