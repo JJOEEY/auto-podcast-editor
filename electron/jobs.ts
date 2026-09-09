@@ -6,12 +6,21 @@ export class JobQueue {
   private cancelled = false;
   private listeners: Array<(e: JobEvent) => void> = [];
 
-  onEvent(fn: (e: JobEvent) => void): void {
+  onEvent(fn: (e: JobEvent) => void): () => void {
     this.listeners.push(fn);
+    return () => {
+      this.listeners = this.listeners.filter((l) => l !== fn);
+    };
   }
 
   private emit(e: JobEvent): void {
-    for (const fn of this.listeners) fn(e);
+    for (const fn of [...this.listeners]) {
+      try {
+        fn(e);
+      } catch {
+        /* listener errors must not break job flow */
+      }
+    }
   }
 
   enqueue<T>(name: string, job: () => Promise<T>): Promise<T> {
@@ -26,6 +35,7 @@ export class JobQueue {
     const run = this.tail.then(async () => {
       if (this.cancelled && wasQueued) {
         this.pending -= 1;
+        this.emit({ type: 'cancelled', name });
         throw new Error('cancelled');
       }
       this.emit({ type: 'started', name });
@@ -47,5 +57,10 @@ export class JobQueue {
   cancelAll(): void {
     this.cancelled = true;
     this.emit({ type: 'cancelled', name: 'all' });
+  }
+
+  reset(): void {
+    if (this.pending > 0) throw new Error('reset while jobs running');
+    this.cancelled = false;
   }
 }
