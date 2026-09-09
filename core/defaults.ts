@@ -1,12 +1,16 @@
 import type { Settings } from './types.js';
 
-export const DEFAULT_SETTINGS: Settings = {
+export const DEFAULT_SETTINGS: Settings = Object.freeze({
   silenceSec: 0.6,
   fillerMaxSec: 1.0,
   lowAudioDb: -40,
   topicPauseSec: 2.0,
   model: 'base',
-};
+});
+
+export function createDefaultSettings(): Settings {
+  return { ...DEFAULT_SETTINGS };
+}
 
 export const SETTINGS_RANGES = {
   silenceSec: { min: 0.3, max: 1.5 },
