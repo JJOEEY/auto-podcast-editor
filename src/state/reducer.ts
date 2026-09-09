@@ -29,8 +29,9 @@ function push(state: State, present: Project): State {
 export function reduce(state: State, action: Action): State {
   switch (action.type) {
     case 'apply-auto-cuts':
-      return push(state, { ...state.present, clips: [...action.clips] });
+      return push(state, { ...state.present, clips: action.clips.map((c) => ({ ...c })) });
     case 'split-clip': {
+      if (!Number.isFinite(action.at)) return state;
       const clips: Clip[] = [];
       let didSplit = false;
       for (const c of state.present.clips) {
