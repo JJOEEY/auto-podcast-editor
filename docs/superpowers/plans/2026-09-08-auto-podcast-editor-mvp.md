@@ -1773,6 +1773,101 @@ git commit -m "feat: whisper sidecar args and progress parser"
 
 ---
 
+### Task 11b: Fix whisper-cli flags to match real CLI (follow-up from Task 11 review)
+
+Verified against whisper.cpp `examples/cli` README: `-oj/--output-json` is a BOOLEAN flag (not a path); output path comes from `-of/--output-file` (basename WITHOUT extension, `.json` appended automatically); word-level timestamps come from `-ml 1/--max-len 1`; progress lines require `-pp/--print-progress`. The Task 11 builder (`-oj <path>`, no `-pp`) would pass the path as a stray input file and emit no progress.
+
+**Files:**
+- Modify: `electron/whisper.ts`
+- Modify: `tests/whisper.test.ts` (update args expectation, add coverage)
+
+- [ ] **Step 1: Rewrite tests**
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { buildWhisperArgs, parseProgressLine, whisperJsonPath } from '../electron/whisper.js';
+
+describe('buildWhisperArgs', () => {
+  it('forces Vietnamese with word timestamps as JSON to a basename', () => {
+    expect(buildWhisperArgs('model.bin', 'audio.wav', 'out/transcript')).toEqual([
+      '-m', 'model.bin', '-l', 'vi', '-f', 'audio.wav',
+      '--max-len', '1', '--print-progress', '--output-json', '--output-file', 'out/transcript',
+    ]);
+  });
+});
+
+describe('whisperJsonPath', () => {
+  it('appends .json to the basename', () => {
+    expect(whisperJsonPath('out/transcript')).toBe('out/transcript.json');
+  });
+});
+
+describe('parseProgressLine', () => {
+  it('reads percent from whisper progress output', () => {
+    expect(parseProgressLine('whisper_print_progress_callback: progress = 42%')).toBe(42);
+    expect(parseProgressLine('some other log line')).toBeNull();
+  });
+
+  it('handles boundaries and spacing variants', () => {
+    expect(parseProgressLine('progress = 0%')).toBe(0);
+    expect(parseProgressLine('progress =  100%')).toBe(100);
+    expect(parseProgressLine('progress = 101%')).toBeNull();
+    expect(parseProgressLine('progress=5%')).toBe(5);
+    expect(parseProgressLine('')).toBeNull();
+  });
+});
+```
+
+- [ ] **Step 2: Run to verify failures**
+
+Run: `npx vitest run tests/whisper.test.ts`
+Expected: FAIL (wrong flags, no whisperJsonPath export).
+
+- [ ] **Step 3: Implement**
+
+```ts
+export function buildWhisperArgs(modelPath: string, audioWav: string, outBase: string): string[] {
+  return [
+    '-m', modelPath, '-l', 'vi', '-f', audioWav,
+    '--max-len', '1', '--print-progress', '--output-json', '--output-file', outBase,
+  ];
+}
+
+export function whisperJsonPath(outBase: string): string {
+  return `${outBase}.json`;
+}
+
+export function parseProgressLine(line: string): number | null {
+  const match = line.match(/progress\s*=\s*(\d{1,3})%/);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return value >= 0 && value <= 100 ? value : null;
+}
+```
+
+`parseProgressLine` unchanged.
+
+- [ ] **Step 4: Update Task 16 snippet** — in the `ai:transcribe` handler, replace `outJson` with basename flow:
+
+```ts
+import { buildWhisperArgs, whisperJsonPath } from './whisper.js';
+...
+    const outBase = `${workDir}/transcript`;
+    spawnSync('whisper-cli', buildWhisperArgs(modelPath, wav, outBase), { stdio: 'ignore' });
+    return whisperJsonPath(outBase);
+```
+
+- [ ] **Step 5: Verify** — whisper tests PASS (4), `npm run typecheck` passes, full suite no regressions. Also run a real end-to-end flag check IF `whisper-cli` exists on the machine (`Get-Command whisper-cli`): `whisper-cli --help` must list `--output-file` and `--print-progress`; otherwise note as Task 16 wiring-time verification.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add electron/whisper.ts tests/whisper.test.ts docs/superpowers/plans/2026-09-08-auto-podcast-editor-mvp.md
+git commit -m "fix: correct whisper-cli flags (-of basename, -pp progress)"
+```
+
+---
+
 ### Task 12: Project reducer with undo (pure)
 
 **Files:**
