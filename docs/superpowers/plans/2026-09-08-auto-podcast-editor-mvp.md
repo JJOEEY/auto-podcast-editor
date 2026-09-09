@@ -2027,6 +2027,99 @@ git commit -m "feat: timeline reducer with batch undo"
 
 ---
 
+### Task 12b: Fix split-id collisions + no-op history (follow-up from Task 12 review)
+
+**Files:**
+- Modify: `src/state/reducer.ts`
+- Modify: `tests/reducer.test.ts` (keep 2 existing tests green)
+
+- [ ] **Step 1: Add tests**
+
+```ts
+describe('reducer robustness', () => {
+  const init = () => createState({ name: 'ep1', sourcePath: 'x.mp4', durationSec: 100, preset: 'vertical', settings: DEFAULT_SETTINGS });
+
+  it('keeps ids unique across double splits', () => {
+    let s = reduce(init(), { type: 'apply-auto-cuts', clips: [{ id: 'k1', track: 'V1', start: 0, end: 10, label: 'k' }] });
+    s = reduce(s, { type: 'split-clip', id: 'k1', at: 4 });
+    s = reduce(s, { type: 'split-clip', id: 'k1', at: 2 });
+    const ids = s.present.clips.map((c) => c.id);
+    expect(s.present.clips).toHaveLength(3);
+    expect(new Set(ids).size).toBe(3);
+    const after = reduce(s, { type: 'delete-clip', id: ids[1] });
+    expect(after.present.clips).toHaveLength(2);
+  });
+
+  it('redo round-trips an undone split', () => {
+    let s = reduce(init(), { type: 'apply-auto-cuts', clips: [{ id: 'k1', track: 'V1', start: 0, end: 10, label: 'k' }] });
+    s = reduce(s, { type: 'split-clip', id: 'k1', at: 4 });
+    s = reduce(s, { type: 'undo' });
+    expect(s.present.clips).toHaveLength(1);
+    s = reduce(s, { type: 'redo' });
+    expect(s.present.clips.map((c) => [c.start, c.end])).toEqual([[0, 4], [4, 10]]);
+  });
+
+  it('treats no-op delete/split as identity (same reference, redo kept)', () => {
+    let s = reduce(init(), { type: 'apply-auto-cuts', clips: [{ id: 'k1', track: 'V1', start: 0, end: 10, label: 'k' }] });
+    expect(reduce(s, { type: 'delete-clip', id: 'missing' })).toBe(s);
+    expect(reduce(s, { type: 'split-clip', id: 'missing', at: 4 })).toBe(s);
+    expect(reduce(s, { type: 'split-clip', id: 'k1', at: 0 })).toBe(s);
+  });
+});
+```
+
+- [ ] **Step 2: Run to verify failures**
+
+Run: `npx vitest run tests/reducer.test.ts`
+Expected: FAIL (duplicate `k1-b` ids, no-op pushes, no redo coverage).
+
+- [ ] **Step 3: Implement** — in `src/state/reducer.ts`:
+1. Split id → `` `${c.id}@${action.at}` `` (unique per source clip + cut point).
+2. `split-clip`: track `didSplit` flag; `return didSplit ? push(...) : state`.
+3. `delete-clip`: `if (!state.present.clips.some((c) => c.id === action.id)) return state;`.
+4. `apply-auto-cuts`: copy array — `clips: [...action.clips]`.
+5. Add `default: return state;` to the switch.
+
+Reference for the changed cases (rest unchanged):
+
+```ts
+    case 'apply-auto-cuts':
+      return push(state, { ...state.present, clips: [...action.clips] });
+    case 'split-clip': {
+      const clips: Clip[] = [];
+      let didSplit = false;
+      for (const c of state.present.clips) {
+        if (c.id !== action.id || action.at <= c.start || action.at >= c.end) {
+          clips.push(c);
+          continue;
+        }
+        didSplit = true;
+        clips.push({ ...c, end: action.at });
+        clips.push({ ...c, id: `${c.id}@${action.at}`, start: action.at });
+      }
+      if (!didSplit) return state;
+      return push(state, { ...state.present, clips });
+    }
+    case 'delete-clip':
+      if (!state.present.clips.some((c) => c.id === action.id)) return state;
+      return push(state, { ...state.present, clips: state.present.clips.filter((c) => c.id !== action.id) });
+```
+
+plus `default: return state;` before the switch close.
+
+- [ ] **Step 4: Verify** — reducer tests PASS (5), `npm run typecheck` passes, full suite no regressions.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/state/reducer.ts tests/reducer.test.ts
+git commit -m "fix: unique split ids, no-op history guards"
+```
+
+Deferred (not this task): history cap (~50-100), float-to-frame quantization at callers.
+
+---
+
 ### Task 13: Timeline component + component test
 
 **Files:**
