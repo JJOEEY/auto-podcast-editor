@@ -6,7 +6,7 @@ export function buildWhisperArgs(modelPath: string, audioWav: string, outBase: s
 }
 
 export function whisperJsonPath(outBase: string): string {
-  return `${outBase}.json`;
+  return outBase.endsWith('.json') ? outBase : `${outBase}.json`;
 }
 
 export function parseProgressLine(line: string): number | null {

@@ -1775,7 +1775,7 @@ git commit -m "feat: whisper sidecar args and progress parser"
 
 ### Task 11b: Fix whisper-cli flags to match real CLI (follow-up from Task 11 review)
 
-Verified against whisper.cpp `examples/cli` README: `-oj/--output-json` is a BOOLEAN flag (not a path); output path comes from `-of/--output-file` (basename WITHOUT extension, `.json` appended automatically); word-level timestamps come from `-ml 1/--max-len 1`; progress lines require `-pp/--print-progress`. The Task 11 builder (`-oj <path>`, no `-pp`) would pass the path as a stray input file and emit no progress.
+Verified against whisper.cpp `examples/cli` README: `-ojson/--output-json` is a BOOLEAN flag (not a path); output path comes from `-of/--output-file` (basename WITHOUT extension, `.json` appended automatically); word-level timestamps come from `-ml 1/--max-len 1`; progress lines require `-pp/--print-progress`. The Task 11 builder (`-oj <path>`, no `-pp`) would pass the path as a stray input file and emit no progress.
 
 **Files:**
 - Modify: `electron/whisper.ts`

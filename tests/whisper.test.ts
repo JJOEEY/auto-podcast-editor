@@ -14,6 +14,9 @@ describe('whisperJsonPath', () => {
   it('appends .json to the basename', () => {
     expect(whisperJsonPath('out/transcript')).toBe('out/transcript.json');
   });
+  it('does not double-append .json', () => {
+    expect(whisperJsonPath('out/transcript.json')).toBe('out/transcript.json');
+  });
 });
 
 describe('parseProgressLine', () => {
