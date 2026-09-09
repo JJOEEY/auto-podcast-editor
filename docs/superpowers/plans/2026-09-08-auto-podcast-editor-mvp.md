@@ -1184,7 +1184,7 @@ git add core/exportText.ts tests/exportText.test.ts
 git commit -m "fix: validate export inputs, terminate SRT file"
 ```
 
-Deferred (not this task): `\r\n` line endings, cue-text sanitization (blank lines/`-->` inside text) — only if a strict player complains.
+Deferred (not this task): `\r\n` line endings, cue-text sanitization (blank lines/`-->` inside text) — only if a strict player complains. Filed from 7b quality review (non-blocking, P1): title/text validation (empty title, non-string/multiline text), Array.isArray guard, extra reject cases (Infinity/-1/NaN end), unicode-space hashtag test, caption error-message pinning, hashtag charset/duplicates policy, zero-duration cue policy.
 
 ---
 
