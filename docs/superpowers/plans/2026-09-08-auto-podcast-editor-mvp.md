@@ -1545,7 +1545,9 @@ git add electron/jobs.ts tests/jobs.test.ts
 git commit -m "fix: queue reset, listener isolation, per-job cancelled event"
 ```
 
-Note for Tasks 15/16: main must call `queue.reset()` when starting a new auto-run after a cancel (queue drains first — reset throws while busy, so await settle first).
+Note for Tasks 15/16: main must call `queue.reset()` when starting a new auto-run after a cancel (queue drains first — reset throws while busy, so await settle first). `cancelled` with `name==='all'` is a global sentinel, not a per-job event — UI counters must ignore it in per-job counts.
+
+Filed from 9b quality review (non-blocking): reset-while-busy throw test, idle-cancel-bricks-until-reset test, one-line snapshot-semantics comment.
 
 ---
 
