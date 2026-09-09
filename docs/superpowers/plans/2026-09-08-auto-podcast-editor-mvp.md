@@ -1322,6 +1322,8 @@ git commit -m "fix: freeze shared defaults, add settings factory"
 
 Note for Task 15: App shell must init state with `createDefaultSettings()`, never `DEFAULT_SETTINGS` by reference.
 
+Filed from 8b quality review (non-blocking, P1): retype `DEFAULT_SETTINGS` as `Readonly<Settings>` so the factory rule is compiler-enforced; assert `Object.isFrozen` instead of relying on strict-mode throw; comment that shallow copy suffices (all fields primitive).
+
 ---
 
 ### Task 9: Sequential job queue (Electron, pure)
