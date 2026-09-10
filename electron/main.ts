@@ -1,16 +1,16 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { basename, extname, join } from 'node:path';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { JobQueue } from './jobs.js';
 import { spawnSync } from 'node:child_process';
 import { buildAudioExtractArgs, runFfprobe } from './media.js';
 import { buildWhisperArgs, parseProgressLine, whisperJsonPath } from './whisper.js';
 import { parseWhisperJson } from '../core/whisperJson.js';
-import { buildHashtags } from '../core/hashtags.js';
 import { buildRenderProps, writePropsFile } from '../core/propsFile.js';
 import { buildCaptionTxt, buildSrt } from '../core/exportText.js';
 import { extensionForFormat, validateExportRequest, type ExportRequest } from '../core/export.js';
 import type { Project } from '../core/types.js';
+import { compressTimeline } from '../core/compressedTimeline.js';
 import { spawnAsync } from './spawnAsync.js';
 import { assertMeaningfulPath } from './paths.js';
 import { buildRemotionRenderArgs, checkSpawn, compIdForPreset } from './render.js';
@@ -122,6 +122,7 @@ ipcMain.handle('job:render', (_e, project: Project, request: ExportRequest) => {
       scale,
       videoBitrate: bitrate,
       muted: request.target === 'video-mute',
+      audioCodec: request.format === 'webm-vp9' ? 'opus' : request.format === 'mov-prores' ? 'pcm-s16le' : 'aac',
     }), { onLine: () => ctx.report(Math.min(0.8, 0.1 + ctxProgressPulse())) });
     ctx.onKill(render.kill);
     checkSpawn('remotion', { status: await render.done });
@@ -138,16 +139,26 @@ ipcMain.handle('job:render', (_e, project: Project, request: ExportRequest) => {
 
     const srtPath = `${basePath}.srt`;
     if (request.captions === 'srt' || request.captions === 'both') {
-      await writeFile(srtPath, buildSrt(project.captions), 'utf8');
+      const timeline = compressTimeline(project.clips, project.captions);
+      await writeFile(srtPath, buildSrt(timeline.captions.map((caption) => ({
+        id: `${caption.item.id}-${caption.outStart}`,
+        start: caption.outStart,
+        end: caption.outEnd,
+        text: caption.item.text,
+      }))), 'utf8');
+      await assertOutput(srtPath);
     }
     const captionPath = `${basePath}.caption.txt`;
     await writeFile(captionPath, buildCaptionTxt(project.name, request.hashtags), 'utf8');
+    await assertOutput(captionPath);
     const thumbPath = `${basePath}.png`;
     if (!isAudio) {
       const thumb = spawnAsync('ffmpeg', ['-y', '-ss', String(Math.max(0, request.thumbSec)), '-i', mediaPath, '-frames:v', '1', '-update', '1', thumbPath]);
       ctx.onKill(thumb.kill);
       checkSpawn('ffmpeg', { status: await thumb.done });
+      await assertOutput(thumbPath);
     }
+    await assertOutput(mediaPath);
     ctx.report(1);
     return { media: mediaPath, srt: request.captions === 'srt' || request.captions === 'both' ? srtPath : null, caption: captionPath, thumb: isAudio ? null : thumbPath };
   });
@@ -157,6 +168,16 @@ let pulse = 0;
 function ctxProgressPulse(): number {
   pulse = (pulse + 0.05) % 0.65;
   return pulse;
+}
+
+async function assertOutput(filePath: string): Promise<void> {
+  try {
+    const info = await stat(filePath);
+    if (info.size === 0) throw new Error(`output is empty: ${filePath}`);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('output is empty:')) throw error;
+    throw new Error(`output was not created: ${filePath}`);
+  }
 }
 
 void app.whenReady().then(createWindow);

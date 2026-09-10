@@ -9,6 +9,7 @@ export interface RenderOptions {
   videoBitrate?: string;
   muted?: boolean;
   scale?: number;
+  audioCodec?: string;
 }
 
 export function buildRenderOutputs(projectPath: string, preset: 'vertical' | 'horizontal'): RenderOutputs {
@@ -32,6 +33,7 @@ export function buildRemotionRenderArgs(compId: string, outMp4: string, propsPat
   }
   if (options.scale) args.push('--scale', String(options.scale));
   if (options.videoBitrate) args.push('--video-bitrate', options.videoBitrate);
+  if (options.audioCodec) args.push('--audio-codec', options.audioCodec);
   if (options.muted) args.push('--muted');
   return args;
 }
