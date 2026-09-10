@@ -7,11 +7,24 @@ import { buildWhisperArgs, whisperJsonPath } from './whisper.js';
 import { buildRemotionRenderArgs, buildRenderOutputs, checkSpawn, compIdForPreset } from './render.js';
 
 const queue = new JobQueue();
+let win: BrowserWindow | null = null;
+
+queue.onEvent((e) => {
+  if (e.type === 'progress') win?.webContents.send('job:progress', { name: e.name, fraction: e.fraction });
+});
 
 async function createWindow(): Promise<void> {
-  const win = new BrowserWindow({ width: 1400, height: 900, webPreferences: { preload: join(__dirname, '../preload/index.mjs') } });
+  win = new BrowserWindow({ width: 1400, height: 900, webPreferences: { preload: join(__dirname, '../preload/index.mjs') } });
   if (process.env['ELECTRON_RENDERER_URL']) await win.loadURL(process.env['ELECTRON_RENDERER_URL']);
 }
+
+ipcMain.handle('job:cancel', () => {
+  queue.cancelAll();
+});
+
+ipcMain.handle('job:reset', () => {
+  queue.reset();
+});
 
 ipcMain.handle('media:probe', (_e, filePath: string) =>
   queue.enqueue('probe', async () =>
