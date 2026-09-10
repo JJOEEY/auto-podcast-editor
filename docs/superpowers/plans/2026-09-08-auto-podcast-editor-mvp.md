@@ -2998,6 +2998,77 @@ git commit -m "fix: callable IPC arities, fail loudly on spawn errors"
 
 ---
 
+### Task 16c: Honest probe + preset guard (follow-up — closes 16b review remainder)
+
+Task 16b quality review proved `spawnSync` does NOT throw on missing binaries (returns `{status: null, error: ENOENT}`), so the probe path is still dishonest; and `job:render` silently renders vertical for `horizontal` requests.
+
+**Files:**
+- Modify: `electron/main.ts` (probe checkSpawn, comp selection)
+- Modify: `electron/render.ts` (export compIdForPreset)
+- Modify: `tests/render.test.ts` (helper tests)
+
+- [ ] **Step 1: Add tests** (extend `../electron/render.js` import with `compIdForPreset`):
+
+```ts
+describe('compIdForPreset', () => {
+  it('maps vertical to PodcastVertical', () => {
+    expect(compIdForPreset('vertical')).toBe('PodcastVertical');
+  });
+
+  it('rejects horizontal until its composition exists (P1)', () => {
+    expect(() => compIdForPreset('horizontal')).toThrow('not yet implemented');
+  });
+});
+```
+
+- [ ] **Step 2: Run to verify failures** — `npx vitest run tests/render.test.ts` → FAIL.
+
+- [ ] **Step 3: Implement**
+
+`electron/render.ts` append:
+
+```ts
+export function compIdForPreset(preset: 'vertical' | 'horizontal'): string {
+  if (preset !== 'vertical') throw new Error(`preset not yet implemented: ${preset}`);
+  return 'PodcastVertical';
+}
+```
+
+`electron/main.ts`:
+1. Probe adapter checks status (import `checkSpawn` already there):
+
+```ts
+ipcMain.handle('media:probe', (_e, filePath: string) =>
+  queue.enqueue('probe', async () =>
+    runFfprobe(filePath, (cmd, args) => {
+      const r = spawnSync(cmd, args, { encoding: 'utf8' });
+      checkSpawn(cmd, r);
+      return { stdout: r.stdout as string };
+    }),
+  ),
+);
+```
+
+2. Render handler uses the mapping:
+
+```ts
+const compId = compIdForPreset(preset);
+const rendered = spawnSync('npx', buildRemotionRenderArgs(compId, out.mp4, propsPath), { stdio: 'inherit' });
+```
+
+Change nothing else (horizontal composition itself is P1).
+
+- [ ] **Step 4: Verify** — render tests PASS (6), `npm run typecheck` passes, full suite no regressions.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add electron/main.ts electron/render.ts tests/render.test.ts
+git commit -m "fix: honest probe errors, reject unimplemented preset"
+```
+
+---
+
 ## P1 backlog (explicitly NOT MVP — filed from Task 16 quality review)
 
 In order: (a) props-JSON writer + wire App → transcribe → render end-to-end; (b) materialize all four render outputs (load project → buildSrt→.srt, hashtags→caption.txt, ffmpeg thumb, compId by preset) and assert existence before returning; (c) async spawn + progress IPC + cancellable jobs (main thread freezes for minutes today); (d) cancel channel + reset-on-new-run; (e) transcribe input validation + `join()` paths (Windows); (f) trim-quantization unification, Readonly defaults, 9b reset-guard tests (filed earlier).
