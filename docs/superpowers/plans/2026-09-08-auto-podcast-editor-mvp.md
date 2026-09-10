@@ -2555,6 +2555,8 @@ git add core/compressedTimeline.ts tests/compressedTimeline.test.ts src/remotion
 git commit -m "fix: frame-exact cut boundaries, drop empty keepers"
 ```
 
+Filed from 14c quality review (non-blocking, P1): unify trim quantization with toFrames (`trimAfter = trimBefore + dur`); assert `totalFrames == from_last+dur_last`; negative-dur skip test; single fps value threaded through.
+
 ---
 
 ### Task 15: App shell wiring + full suite green
