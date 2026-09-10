@@ -13,7 +13,10 @@ export function App(): JSX.Element {
       <h1>Auto Podcast Editor (MVP)</h1>
       <Timeline
         clips={state.present.clips}
-        onSplit={(id) => dispatch({ type: 'split-clip', id, at: state.present.clips.find((c) => c.id === id)!.start + 1 })}
+        onSplit={(id) => {
+          const clip = state.present.clips.find((c) => c.id === id);
+          if (clip) dispatch({ type: 'split-clip', id, at: clip.start + 1 });
+        }}
         onDelete={(id) => dispatch({ type: 'delete-clip', id })}
       />
     </div>

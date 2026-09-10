@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 const queue = new JobQueue();
 
 async function createWindow(): Promise<void> {
-  const win = new BrowserWindow({ width: 1400, height: 900, webPreferences: { preload: join(__dirname, 'preload.js') } });
+  const win = new BrowserWindow({ width: 1400, height: 900, webPreferences: { preload: join(__dirname, '../preload/index.mjs') } });
   if (process.env['ELECTRON_RENDERER_URL']) await win.loadURL(process.env['ELECTRON_RENDERER_URL']);
 }
 
