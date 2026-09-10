@@ -2696,6 +2696,36 @@ git commit -m "fix: wire electron-vite entries so dev launches"
 
 ---
 
+### Task 15c: Add Electron entry point (follow-up — bare `npm run dev` still needs it)
+
+Task 15b proved Electron starts via `ELECTRON_ENTRY` bypass, but bare `npm run dev` fails the `ensureElectronEntryFile` check: `package.json` has no `"main"` field.
+
+**Files:**
+- Modify: `package.json` (one line)
+
+- [ ] **Step 1: Add entry point**
+
+```json
+"main": "./out/main/index.js",
+```
+
+(Add as a top-level key in package.json; no `"main"` key exists today.)
+
+- [ ] **Step 2: Verify real launch**
+
+Run bare `npm run dev` with ~30s timeout. Expected: no entry-point error; main/preload build; renderer serves; Electron process stays Running. Kill after verification. If no display blocks it, capture the EXACT error and report NEEDS_CONTEXT.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add package.json
+git commit -m "fix: add electron entry point for dev launch"
+```
+
+Deferred to packaging (not this task): `loadFile` fallback in main.ts, `publicDir` convention, CSP/viewport in index.html, `"noEmit": true` in tsconfig.
+
+---
+
 ### Task 16: Render outputs + transcribe/render IPC wiring + sample pipeline test
 
 **Files:**
