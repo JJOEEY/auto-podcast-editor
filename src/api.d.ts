@@ -19,6 +19,7 @@ interface DesktopApi {
   loadProject(filePath: string): Promise<Project>;
   writeProject(filePath: string, project: Project): Promise<void>;
   capabilities(): Promise<{ encoders: string[]; filters: string[]; hwaccels: string[] }>;
+  doctor(): Promise<Record<string, { name: string; ok: boolean; path?: string | null; error?: string | null }>>;
   listSfx(): Promise<SfxAsset[]>;
   importSfx(sourcePath: string): Promise<SfxAsset>;
   probe(filePath: string): Promise<number>;

@@ -27,6 +27,7 @@ export function App(): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [projectFilePath, setProjectFilePath] = useState<string | null>(null);
+  const [doctor, setDoctor] = useState<Record<string, { name: string; ok: boolean; path?: string | null; error?: string | null }> | null>(null);
   const [transitionType, setTransitionType] = useState<'hard-cut' | 'fade' | 'glitch' | 'film-burn'>('fade');
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
 
@@ -43,6 +44,10 @@ export function App(): JSX.Element {
     }, 1000);
     return () => window.clearTimeout(timer);
   }, [projectFilePath, state.present]);
+
+  useEffect(() => {
+    void window.api.doctor().then(setDoctor).catch(() => setDoctor(null));
+  }, []);
 
   useEffect(() => {
     if (!projectFilePath || !state.present.sourcePath) return;
@@ -267,6 +272,7 @@ export function App(): JSX.Element {
       <footer style={{ marginTop: 16, color: '#64748b' }}>
         {state.present.clips.length} video clip · {state.present.captions.length} caption · {state.present.proposals.length} đề xuất
       </footer>
+      {doctor && <details style={{ marginTop: 16 }}><summary>Dependency Doctor</summary><div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 8 }}>{Object.values(doctor).map((item) => <span key={item.name} style={{ color: item.ok ? '#15803d' : '#b91c1c' }}>{item.ok ? '✓' : '✕'} {item.name}</span>)}</div></details>}
       {exportOpen && <ExportDialog project={state.present} onClose={() => setExportOpen(false)} onExport={exportProject} />}
     </div>
   );

@@ -119,6 +119,21 @@ ipcMain.handle('ffmpeg:capabilities', () => {
   return buildCapabilitySnapshot(run(['-hide_banner', '-encoders']), run(['-hide_banner', '-filters']), run(['-hide_banner', '-hwaccels']));
 });
 
+ipcMain.handle('runtime:doctor', () => {
+  const check = (name: string, command: string, args: string[]) => {
+    const executable = command.includes('\\') || command.includes('/') ? command : runtimeBinary(command);
+    const result = spawnSync(executable, args, { encoding: 'utf8' });
+    return { name, ok: result.status === 0 && !result.error, path: executable, error: result.error?.message ?? null };
+  };
+  return {
+    ffmpeg: check('FFmpeg', 'ffmpeg', ['-version']),
+    ffprobe: check('FFprobe', 'ffprobe', ['-version']),
+    whisper: check('Whisper CLI', 'whisper-cli', ['--version']),
+    model: { name: 'Whisper base model', ok: Boolean(defaultModelPath()), path: defaultModelPath() },
+    remotion: { name: 'Remotion renderer', ok: existsSync(join(app.getAppPath(), 'src', 'remotion', 'entry.ts')) },
+  };
+});
+
 ipcMain.handle('media:probe', (_e, filePath: string) =>
   queue.enqueue('probe', async () =>
     runFfprobe(filePath, (cmd, args) => {
