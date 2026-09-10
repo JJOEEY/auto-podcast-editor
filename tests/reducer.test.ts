@@ -35,6 +35,16 @@ describe('apply-analysis', () => {
   });
 });
 
+describe('manual timeline edits', () => {
+  it('moves and trims a clip', () => {
+    let s = createState({ name: 'ep', sourcePath: 'x', durationSec: 20, preset: 'vertical', settings: DEFAULT_SETTINGS });
+    s = reduce(s, { type: 'apply-auto-cuts', clips: [{ id: 'k', track: 'V1', start: 2, end: 8, label: 'k' }] });
+    s = reduce(s, { type: 'move-clip', id: 'k', delta: 1 });
+    s = reduce(s, { type: 'trim-clip', id: 'k', edge: 'end', delta: 2 });
+    expect(s.present.clips[0]).toMatchObject({ start: 3, end: 11 });
+  });
+});
+
 describe('reducer undo', () => {
   it('applies a cut and undoes the whole auto batch at once', () => {
     let s = createState({ name: 'ep1', sourcePath: 'x.mp4', durationSec: 100, preset: 'vertical', settings: DEFAULT_SETTINGS });

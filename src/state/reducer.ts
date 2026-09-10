@@ -16,6 +16,8 @@ export type Action =
   | { type: 'add-sfx'; clip: SfxClip }
   | { type: 'remove-sfx'; id: string }
   | { type: 'set-transition-all'; transition: TransitionConfig }
+  | { type: 'move-clip'; id: string; delta: number }
+  | { type: 'trim-clip'; id: string; edge: 'start' | 'end'; delta: number }
   | { type: 'split-clip'; id: string; at: number }
   | { type: 'delete-clip'; id: string }
   | { type: 'undo' }
@@ -75,6 +77,23 @@ export function reduce(state: State, action: Action): State {
           transitionOut: index === all.length - 1 ? undefined : { ...action.transition },
         })),
       });
+    case 'move-clip': {
+      const clip = state.present.clips.find((item) => item.id === action.id);
+      if (!clip) return state;
+      const duration = clip.end - clip.start;
+      const start = Math.max(0, clip.start + action.delta);
+      const end = start + duration;
+      return push(state, { ...state.present, clips: state.present.clips.map((item) => item.id === action.id ? { ...item, start, end } : item) });
+    }
+    case 'trim-clip': {
+      const clip = state.present.clips.find((item) => item.id === action.id);
+      if (!clip) return state;
+      const next = action.edge === 'start'
+        ? { ...clip, start: Math.min(clip.end - 1 / 30, Math.max(0, clip.start + action.delta)) }
+        : { ...clip, end: Math.max(clip.start + 1 / 30, clip.end + action.delta) };
+      if (next.start === clip.start && next.end === clip.end) return state;
+      return push(state, { ...state.present, clips: state.present.clips.map((item) => item.id === action.id ? next : item) });
+    }
     case 'split-clip': {
       if (!Number.isFinite(action.at)) return state;
       const clips: Clip[] = [];

@@ -26,6 +26,7 @@ export function App(): JSX.Element {
   const [exportOpen, setExportOpen] = useState(false);
   const [projectFilePath, setProjectFilePath] = useState<string | null>(null);
   const [transitionType, setTransitionType] = useState<'hard-cut' | 'fade' | 'glitch' | 'film-burn'>('fade');
+  const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
 
   useEffect(() => window.api.onProgress((event) => {
     if (event.name === 'transcribe') setProgress(Math.round(event.fraction * 100));
@@ -237,6 +238,11 @@ export function App(): JSX.Element {
       <section style={{ marginTop: 24 }}>
         <Timeline
           clips={state.present.clips}
+          durationSec={state.present.durationSec}
+          selectedId={selectedClipId}
+          onSelect={setSelectedClipId}
+          onMove={(id, delta) => dispatch({ type: 'move-clip', id, delta })}
+          onTrim={(id, edge, delta) => dispatch({ type: 'trim-clip', id, edge, delta })}
           onSplit={(id) => {
             const clip = state.present.clips.find((c) => c.id === id);
             if (clip) dispatch({ type: 'split-clip', id, at: clip.start + 1 });
