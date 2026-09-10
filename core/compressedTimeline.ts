@@ -10,15 +10,25 @@ export interface CompressedTimeline {
   totalFrames: number;
 }
 
+export interface FrameSpan { from: number; dur: number; }
+
+export function toFrames(outStart: number, outEnd: number, fps = TIMELINE_FPS): FrameSpan {
+  const from = Math.round(outStart * fps);
+  return { from, dur: Math.max(1, Math.round(outEnd * fps) - from) };
+}
+
+// Callers must supply disjoint V1 keepers (sorted internally); overlapping keepers are out of contract.
 export function compressTimeline(clips: Clip[], captions: CaptionLine[], fps = TIMELINE_FPS): CompressedTimeline {
   const sorted = [...clips].filter((c) => c.track === 'V1').sort((a, b) => a.start - b.start);
   let cursor = 0;
-  const video: Placed<Clip>[] = sorted.map((c) => {
-    const dur = Math.max(0, c.end - c.start);
+  const video: Placed<Clip>[] = [];
+  for (const c of sorted) {
+    const dur = c.end - c.start;
+    if (dur <= 0) continue;
     const p = { item: c, outStart: cursor, outEnd: cursor + dur };
     cursor += dur;
-    return p;
-  });
+    video.push(p);
+  }
   const placedCaps: Placed<CaptionLine>[] = [];
   for (const cap of captions) {
     for (const keeper of video) {

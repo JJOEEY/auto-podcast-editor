@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compressTimeline, TIMELINE_FPS } from '../core/compressedTimeline.js';
+import { compressTimeline, TIMELINE_FPS, toFrames } from '../core/compressedTimeline.js';
 import type { CaptionLine, Clip } from '../core/types.js';
 
 const v = (id: string, start: number, end: number): Clip => ({ id, track: 'V1', start, end, label: id });
@@ -30,5 +30,23 @@ describe('compressTimeline', () => {
     const out = compressTimeline([v('b', 20, 30), v('a', 0, 10)], []);
     expect(out.video.map((p) => p.item.id)).toEqual(['a', 'b']);
     expect(out.video[1].outStart).toBe(10);
+  });
+});
+
+describe('frame-exact boundaries', () => {
+  it('keeps consecutive clips contiguous (no gap, no overlap)', () => {
+    const a = toFrames(0, 10.02);
+    const b = toFrames(10.02, 20);
+    expect(a.from + a.dur).toBe(b.from);
+  });
+
+  it('clamps zero-length spans to 1 frame', () => {
+    expect(toFrames(5, 5).dur).toBe(1);
+  });
+
+  it('drops zero-duration keepers', () => {
+    const out = compressTimeline([v('k1', 0, 10), v('empty', 5, 5), v('k2', 20, 30)], []);
+    expect(out.video.map((p) => p.item.id)).toEqual(['k1', 'k2']);
+    expect(out.totalFrames).toBe(20 * TIMELINE_FPS);
   });
 });
