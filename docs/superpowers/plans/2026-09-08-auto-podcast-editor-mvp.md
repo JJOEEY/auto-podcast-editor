@@ -2379,6 +2379,116 @@ git commit -m "feat: remotion composition for segments and captions"
 
 ---
 
+### Task 14b: Compressed timeline (follow-up — REQUIRED before Task 16)
+
+Task 14 places keep-segments at absolute times, so removed regions render as black gaps. This task remaps everything onto a gapless timeline. Pure logic + rewire, no IPC.
+
+**Files:**
+- Create: `core/compressedTimeline.ts`
+- Test: `tests/compressedTimeline.test.ts`
+- Modify: `src/remotion/PodcastComposition.tsx` (consume Placed)
+- Modify: `src/remotion/Root.tsx` (calculateMetadata duration)
+
+- [ ] **Step 1: Write tests**
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { compressTimeline, TIMELINE_FPS } from '../core/compressedTimeline.js';
+import type { CaptionLine, Clip } from '../core/types.js';
+
+const v = (id: string, start: number, end: number): Clip => ({ id, track: 'V1', start, end, label: id });
+const cc = (id: string, start: number, end: number): CaptionLine => ({ id, start, end, text: id });
+
+describe('compressTimeline', () => {
+  it('closes gaps between keep segments', () => {
+    const out = compressTimeline([v('k1', 0, 10), v('k2', 20, 100)], []);
+    expect(out.video.map((p) => [p.outStart, p.outEnd])).toEqual([[0, 10], [10, 90]]);
+    expect(out.totalFrames).toBe(90 * TIMELINE_FPS);
+  });
+
+  it('shifts captions by removed time', () => {
+    const out = compressTimeline([v('k1', 0, 10), v('k2', 20, 100)], [cc('c1', 21, 23)]);
+    expect(out.captions).toHaveLength(1);
+    expect([out.captions[0].outStart, out.captions[0].outEnd]).toEqual([11, 13]);
+  });
+
+  it('clips captions spanning a cut and drops fully-removed ones', () => {
+    const out = compressTimeline([v('k1', 0, 10), v('k2', 20, 100)], [cc('span', 8, 25), cc('gone', 12, 15)]);
+    const span = out.captions.filter((p) => p.item.id === 'span');
+    expect(span.map((p) => [p.outStart, p.outEnd])).toEqual([[8, 10], [10, 15]]);
+    expect(out.captions.some((p) => p.item.id === 'gone')).toBe(false);
+  });
+
+  it('handles empty input and unsorted clips', () => {
+    expect(compressTimeline([], []).totalFrames).toBe(1);
+    const out = compressTimeline([v('b', 20, 30), v('a', 0, 10)], []);
+    expect(out.video.map((p) => p.item.id)).toEqual(['a', 'b']);
+    expect(out.video[1].outStart).toBe(10);
+  });
+});
+```
+
+- [ ] **Step 2: Run to verify failures**
+
+Run: `npx vitest run tests/compressedTimeline.test.ts`
+Expected: FAIL (module does not exist).
+
+- [ ] **Step 3: Implement** `core/compressedTimeline.ts`:
+
+```ts
+import type { CaptionLine, Clip } from './types.js';
+
+export const TIMELINE_FPS = 30;
+
+export interface Placed<T> { item: T; outStart: number; outEnd: number; }
+
+export interface CompressedTimeline {
+  video: Placed<Clip>[];
+  captions: Placed<CaptionLine>[];
+  totalFrames: number;
+}
+
+export function compressTimeline(clips: Clip[], captions: CaptionLine[], fps = TIMELINE_FPS): CompressedTimeline {
+  const sorted = [...clips].filter((c) => c.track === 'V1').sort((a, b) => a.start - b.start);
+  let cursor = 0;
+  const video: Placed<Clip>[] = sorted.map((c) => {
+    const dur = Math.max(0, c.end - c.start);
+    const p = { item: c, outStart: cursor, outEnd: cursor + dur };
+    cursor += dur;
+    return p;
+  });
+  const placedCaps: Placed<CaptionLine>[] = [];
+  for (const cap of captions) {
+    for (const keeper of video) {
+      const s = Math.max(cap.start, keeper.item.start);
+      const e = Math.min(cap.end, keeper.item.end);
+      if (e - s <= 0) continue;
+      const offset = keeper.outStart - keeper.item.start;
+      placedCaps.push({ item: cap, outStart: s + offset, outEnd: e + offset });
+    }
+  }
+  placedCaps.sort((a, b) => a.outStart - b.outStart);
+  return { video, captions: placedCaps, totalFrames: Math.max(1, Math.round(cursor * fps)) };
+}
+```
+
+- [ ] **Step 4: Rewire composition + Root (same commit)**
+
+`PodcastComposition`: call `compressTimeline(clips, captions, TIMELINE_FPS)` (import from core), render `video` with `Sequence from=round(outStart*FPS) duration=max(1,round((outEnd-outStart)*FPS))` keeping `trimBefore/After` on ABSOLUTE source times; render placed captions with key `` `${l.id}-${Math.round(outStart * 1000)}` `` (one caption split across a cut yields two entries — same base id needs the suffix).
+
+`Root`: add `calculateMetadata` returning `{ durationInFrames: compressTimeline(props.clips, props.captions).totalFrames, props }`, keep static `durationInFrames={1800}` as fallback. Typecheck is the gate (adapt to installed Remotion 4 types as in Task 14).
+
+- [ ] **Step 5: Verify** — compressedTimeline tests PASS (4), `npm run typecheck` passes, full suite no regressions.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add core/compressedTimeline.ts tests/compressedTimeline.test.ts src/remotion/PodcastComposition.tsx src/remotion/Root.tsx
+git commit -m "feat: gapless compressed timeline with caption remap"
+```
+
+---
+
 ### Task 15: App shell wiring + full suite green
 
 **Files:**
