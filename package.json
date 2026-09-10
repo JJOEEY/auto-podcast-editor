@@ -1,6 +1,8 @@
 {
   "name": "auto-podcast-editor",
   "version": "0.1.0",
+  "description": "Local desktop editor for automating podcast cuts, captions, and exports",
+  "author": "Auto Podcast Editor",
   "private": true,
   "type": "module",
   "main": "./out/main/index.js",
@@ -8,7 +10,37 @@
     "dev": "electron-vite dev",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "dist": "electron-vite build"
+    "dist": "electron-vite build",
+    "installer": "npm run dist && electron-builder --win nsis"
+  },
+  "build": {
+    "appId": "com.autopodcast.editor",
+    "productName": "Auto Podcast Editor",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Auto Podcast Editor"
+    }
   },
   "devDependencies": {
     "@remotion/cli": "^4.0.0",
@@ -20,6 +52,7 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.0",
     "electron": "^33.0.0",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^2.3.0",
     "jsdom": "^25.0.0",
     "remotion": "^4.0.0",
