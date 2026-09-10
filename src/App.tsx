@@ -24,11 +24,30 @@ export function App(): JSX.Element {
   const [progress, setProgress] = useState(0);
   const [busy, setBusy] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [projectFilePath, setProjectFilePath] = useState<string | null>(null);
   const [transitionType, setTransitionType] = useState<'hard-cut' | 'fade' | 'glitch' | 'film-burn'>('fade');
 
   useEffect(() => window.api.onProgress((event) => {
     if (event.name === 'transcribe') setProgress(Math.round(event.fraction * 100));
   }), []);
+
+  useEffect(() => {
+    if (!projectFilePath || !state.present.sourcePath) return;
+    const timer = window.setTimeout(() => {
+      void window.api.writeProject(projectFilePath, state.present).catch((error) => {
+        setStatus(`Autosave lỗi: ${error instanceof Error ? error.message : String(error)}`);
+      });
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [projectFilePath, state.present]);
+
+  useEffect(() => {
+    if (!projectFilePath || !state.present.sourcePath) return;
+    const interval = window.setInterval(() => {
+      void window.api.writeProject(projectFilePath, state.present);
+    }, 30_000);
+    return () => window.clearInterval(interval);
+  }, [projectFilePath, state.present]);
 
   const importVideo = async (): Promise<void> => {
     try {
@@ -53,9 +72,36 @@ export function App(): JSX.Element {
           subtitleStyle: 'karaoke',
         },
       });
+      setProjectFilePath(null);
       setStatus(`Đã import: ${name} (${durationSec.toFixed(1)}s)`);
     } catch (error) {
       setStatus(`Import lỗi: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
+  const openProject = async (): Promise<void> => {
+    const filePath = await window.api.openProject();
+    if (!filePath) return;
+    try {
+      const project = await window.api.loadProject(filePath);
+      dispatch({ type: 'open-project', project });
+      setProjectFilePath(filePath);
+      setModelPath('');
+      setStatus(`Đã mở project: ${project.name}`);
+    } catch (error) {
+      setStatus(`Mở project lỗi: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
+  const saveProject = async (): Promise<void> => {
+    try {
+      const filePath = projectFilePath || await window.api.saveProject(state.present.name);
+      if (!filePath) return;
+      await window.api.writeProject(filePath, state.present);
+      setProjectFilePath(filePath);
+      setStatus(`Đã lưu: ${filePath.split(/[\\/]/).pop()}`);
+    } catch (error) {
+      setStatus(`Lưu project lỗi: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
@@ -154,6 +200,8 @@ export function App(): JSX.Element {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={importVideo} disabled={busy}>Import video</button>
+          <button onClick={openProject} disabled={busy}>Mở project</button>
+          <button onClick={saveProject} disabled={busy || !state.present.sourcePath}>Lưu</button>
           <button onClick={chooseModel} disabled={busy}>{modelPath ? 'Đổi model' : 'Chọn Whisper model'}</button>
           <button onClick={transcribe} disabled={busy || !state.present.sourcePath}>Transcribe + auto-cut</button>
           <button onClick={() => setExportOpen(true)} disabled={busy || !state.present.sourcePath}>Xuất</button>

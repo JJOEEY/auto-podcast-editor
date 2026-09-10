@@ -8,6 +8,7 @@ import { buildAudioExtractArgs, runFfprobe } from './media.js';
 import { buildWhisperArgs, parseProgressLine, whisperJsonPath } from './whisper.js';
 import { parseWhisperJson } from '../core/whisperJson.js';
 import { buildRenderProps, writePropsFile } from '../core/propsFile.js';
+import { loadProject, saveProject } from '../core/projectFile.js';
 import { importSfx, listSfx } from './sfxLibrary.js';
 import { buildCaptionTxt, buildSrt } from '../core/exportText.js';
 import { extensionForFormat, validateExportRequest, type ExportRequest } from '../core/export.js';
@@ -88,6 +89,25 @@ ipcMain.handle('dialog:open-sfx', async () => {
   });
   return result.canceled ? null : result.filePaths[0];
 });
+
+ipcMain.handle('dialog:open-project', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openFile'],
+    filters: [{ name: 'Auto Podcast project', extensions: ['ape.json'] }],
+  });
+  return result.canceled ? null : result.filePaths[0];
+});
+
+ipcMain.handle('dialog:save-project', async (_e, suggestedName: string) => {
+  const result = await dialog.showSaveDialog({
+    defaultPath: suggestedName.endsWith('.ape.json') ? suggestedName : `${suggestedName}.ape.json`,
+    filters: [{ name: 'Auto Podcast project', extensions: ['ape.json'] }],
+  });
+  return result.canceled ? null : result.filePath;
+});
+
+ipcMain.handle('project:load', (_e, filePath: string) => loadProject(filePath));
+ipcMain.handle('project:save', (_e, filePath: string, project: Project) => saveProject(filePath, project));
 
 ipcMain.handle('sfx:list', () => listSfx(app.getPath('userData'), join(app.getAppPath(), 'assets', 'sfx', 'bundled')));
 ipcMain.handle('sfx:import', (_e, sourcePath: string) => importSfx(app.getPath('userData'), sourcePath));
