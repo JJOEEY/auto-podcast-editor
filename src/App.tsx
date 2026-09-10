@@ -10,6 +10,8 @@ import { Timeline } from './components/Timeline.js';
 import { Preview } from './components/Preview.js';
 import { CutProposals } from './components/CutProposals.js';
 import { ExportDialog } from './components/ExportDialog.js';
+import { CommandPanel } from './components/CommandPanel.js';
+import type { EditCommand } from '../core/commandParser.js';
 import { SfxLibrary } from './components/SfxLibrary.js';
 import { makeSfxClip } from '../core/sfxLibrary.js';
 import { decorateTransitions, TRANSITION_PRESETS, transitionConfig } from '../core/effects.js';
@@ -192,6 +194,15 @@ export function App(): JSX.Element {
     setStatus(`Đã áp dụng ${selected.length} đề xuất cắt.`);
   };
 
+  const applyCommands = (commands: EditCommand[]): void => {
+    for (const command of commands) {
+      if (command.type === 'remove-silence') applySelectedProposals(state.present.proposals);
+      if (command.type === 'subtitle-style') dispatch({ type: 'set-subtitle-style', style: command.style });
+      if (command.type === 'transition-style') dispatch({ type: 'set-transition-all', transition: transitionConfig(command.transition) });
+    }
+    setStatus(`Đã áp dụng ${commands.length} lệnh edit.`);
+  };
+
   return (
     <div style={{ fontFamily: 'system-ui', maxWidth: 1100, margin: '0 auto', padding: 24 }}>
       <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
@@ -219,6 +230,9 @@ export function App(): JSX.Element {
           <small>{progress}% — đang chạy nền, bạn có thể hủy</small>
         </div>
       )}
+      <section style={{ marginTop: 24 }}>
+        <CommandPanel onApply={applyCommands} />
+      </section>
       <section style={{ marginTop: 24 }}>
         <Preview sourcePath={state.present.sourcePath} clips={state.present.clips} captions={state.present.captions} sfx={state.present.sfx} subtitleStyle={state.present.subtitleStyle} preset={state.present.preset} />
       </section>

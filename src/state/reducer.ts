@@ -1,4 +1,4 @@
-import type { CaptionLine, Clip, CutProposal, Preset, Project, Settings, SfxClip, TransitionConfig } from '../../core/types.js';
+import type { CaptionLine, Clip, CutProposal, Preset, Project, Settings, SfxClip, SubtitleStyleId, TransitionConfig } from '../../core/types.js';
 
 export interface Init {
   name: string;
@@ -16,6 +16,7 @@ export type Action =
   | { type: 'add-sfx'; clip: SfxClip }
   | { type: 'remove-sfx'; id: string }
   | { type: 'set-transition-all'; transition: TransitionConfig }
+  | { type: 'set-subtitle-style'; style: SubtitleStyleId }
   | { type: 'move-clip'; id: string; delta: number }
   | { type: 'trim-clip'; id: string; edge: 'start' | 'end'; delta: number }
   | { type: 'split-clip'; id: string; at: number }
@@ -77,6 +78,9 @@ export function reduce(state: State, action: Action): State {
           transitionOut: index === all.length - 1 ? undefined : { ...action.transition },
         })),
       });
+    case 'set-subtitle-style':
+      if (state.present.subtitleStyle === action.style) return state;
+      return push(state, { ...state.present, subtitleStyle: action.style });
     case 'move-clip': {
       const clip = state.present.clips.find((item) => item.id === action.id);
       if (!clip) return state;
