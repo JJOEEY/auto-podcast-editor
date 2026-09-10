@@ -16,3 +16,13 @@ export function buildRenderOutputs(projectPath: string, preset: 'vertical' | 'ho
 export function buildRemotionRenderArgs(compId: string, outMp4: string, propsPath: string): string[] {
   return ['remotion', 'render', compId, outMp4, '--props', propsPath];
 }
+
+export interface SpawnResult {
+  status: number | null;
+  error?: Error;
+}
+
+export function checkSpawn(cmd: string, result: SpawnResult): void {
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(`${cmd} exited with code ${String(result.status)}`);
+}

@@ -1,11 +1,10 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { join } from 'node:path';
 import { JobQueue } from './jobs.js';
-import { runFfprobe } from './media.js';
 import { spawnSync } from 'node:child_process';
-import { buildAudioExtractArgs } from './media.js';
+import { buildAudioExtractArgs, runFfprobe } from './media.js';
 import { buildWhisperArgs, whisperJsonPath } from './whisper.js';
-import { buildRemotionRenderArgs, buildRenderOutputs } from './render.js';
+import { buildRemotionRenderArgs, buildRenderOutputs, checkSpawn } from './render.js';
 
 const queue = new JobQueue();
 
@@ -23,9 +22,11 @@ ipcMain.handle('media:probe', (_e, filePath: string) =>
 ipcMain.handle('ai:transcribe', (_e, filePath: string, workDir: string, modelPath: string) =>
   queue.enqueue('transcribe', async () => {
     const wav = `${workDir}/audio16k.wav`;
-    spawnSync('ffmpeg', buildAudioExtractArgs(filePath, wav), { stdio: 'ignore' });
+    const ffmpeg = spawnSync('ffmpeg', buildAudioExtractArgs(filePath, wav), { stdio: 'ignore' });
+    checkSpawn('ffmpeg', ffmpeg);
     const outBase = `${workDir}/transcript`;
-    spawnSync('whisper-cli', buildWhisperArgs(modelPath, wav, outBase), { stdio: 'ignore' });
+    const whisper = spawnSync('whisper-cli', buildWhisperArgs(modelPath, wav, outBase), { stdio: 'ignore' });
+    checkSpawn('whisper-cli', whisper);
     return whisperJsonPath(outBase);
   }),
 );
@@ -33,7 +34,8 @@ ipcMain.handle('ai:transcribe', (_e, filePath: string, workDir: string, modelPat
 ipcMain.handle('job:render', (_e, projectPath: string, preset: 'vertical' | 'horizontal', propsPath: string) =>
   queue.enqueue('render', async () => {
     const out = buildRenderOutputs(projectPath, preset);
-    spawnSync('npx', buildRemotionRenderArgs('PodcastVertical', out.mp4, propsPath), { stdio: 'inherit' });
+    const rendered = spawnSync('npx', buildRemotionRenderArgs('PodcastVertical', out.mp4, propsPath), { stdio: 'inherit' });
+    checkSpawn('remotion', rendered);
     return out;
   }),
 );
