@@ -5,7 +5,7 @@ describe('buildWhisperArgs', () => {
   it('forces Vietnamese with word timestamps as JSON to a basename', () => {
     expect(buildWhisperArgs('model.bin', 'audio.wav', 'out/transcript')).toEqual([
       '-m', 'model.bin', '-l', 'vi', '-f', 'audio.wav',
-      '--max-len', '1', '--print-progress', '--output-json', '--output-file', 'out/transcript',
+      '--max-len', '1', '--print-progress', '--output-json-full', '--output-file', 'out/transcript',
     ]);
   });
 });

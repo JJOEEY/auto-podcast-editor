@@ -1,9 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('api', {
+  openVideo: () => ipcRenderer.invoke('dialog:open-video'),
+  openModel: () => ipcRenderer.invoke('dialog:open-model'),
   probe: (filePath: string) => ipcRenderer.invoke('media:probe', filePath),
-  transcribe: (filePath: string, workDir: string, modelPath: string) =>
-    ipcRenderer.invoke('ai:transcribe', filePath, workDir, modelPath),
+  transcribe: (filePath: string, modelPath: string) =>
+    ipcRenderer.invoke('ai:transcribe', filePath, modelPath),
   render: (projectPath: string, preset: 'vertical' | 'horizontal', propsPath: string) =>
     ipcRenderer.invoke('job:render', projectPath, preset, propsPath),
   cancel: () => ipcRenderer.invoke('job:cancel'),

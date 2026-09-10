@@ -1,7 +1,7 @@
 export function buildWhisperArgs(modelPath: string, audioWav: string, outBase: string): string[] {
   return [
     '-m', modelPath, '-l', 'vi', '-f', audioWav,
-    '--max-len', '1', '--print-progress', '--output-json', '--output-file', outBase,
+    '--max-len', '1', '--print-progress', '--output-json-full', '--output-file', outBase,
   ];
 }
 
