@@ -2661,6 +2661,7 @@ Task 15 verification found: `npm run dev` errors with "An entry point is require
 **Files:**
 - Modify: `electron.vite.config.ts`
 - Create: `src/index.html` (or wherever the config points the renderer root)
+- Modify: `src/App.tsx` (null-check only — see Step 2b)
 - Modify: nothing else unless required (keep the fix config-only if possible)
 
 - [ ] **Step 1: Read the installed electron-vite docs**
@@ -2669,7 +2670,16 @@ Read `node_modules/electron-vite/README.md` (and its default-entry resolution if
 
 - [ ] **Step 2: Configure entries + renderer HTML**
 
-Set explicit entries for main/preload and renderer root in `electron.vite.config.ts`; add the renderer `index.html` mounting `#root` and loading the existing `src/main.tsx`. Keep `react()` plugin. Verify `npm run typecheck` still passes.
+Set explicit entries for main/preload and renderer root in `electron.vite.config.ts`; add the renderer `index.html` mounting `#root` and loading the existing `src/main.tsx`. Keep `react()` plugin. Also null-check the split dispatch in `src/App.tsx` (Task 15 quality review: `find(...)!` unmounts the tree on missing id):
+
+```tsx
+onSplit={(id) => {
+  const clip = state.present.clips.find((c) => c.id === id);
+  if (clip) dispatch({ type: 'split-clip', id, at: clip.start + 1 });
+}}
+```
+
+Verify `npm run typecheck` still passes. Resolve the correct preload output path for `electron/main.ts` (`join(__dirname, ...)` must match the out/ layout your entries produce — fix `main.ts` in the same commit if the layout requires it).
 
 - [ ] **Step 3: Verify launch**
 
@@ -2678,11 +2688,11 @@ Run: `npm run dev` with a timeout (e.g. 30s). Expected: no config error; Electro
 - [ ] **Step 4: Commit**
 
 ```bash
-git add electron.vite.config.ts src/index.html
+git add electron.vite.config.ts src/index.html src/App.tsx electron/main.ts
 git commit -m "fix: wire electron-vite entries so dev launches"
 ```
 
-(Adjust the `git add` list to exactly the files changed.)
+(Stage only files that actually changed; drop unchanged paths from the `git add` list.)
 
 ---
 
