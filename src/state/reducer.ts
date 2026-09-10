@@ -1,4 +1,4 @@
-import type { CaptionLine, Clip, CutProposal, Preset, Project, Settings } from '../../core/types.js';
+import type { CaptionLine, Clip, CutProposal, Preset, Project, Settings, SfxClip, TransitionConfig } from '../../core/types.js';
 
 export interface Init {
   name: string;
@@ -13,6 +13,9 @@ export type Action =
   | { type: 'apply-analysis'; clips: Clip[]; captions: CaptionLine[]; proposals: CutProposal[] }
   | { type: 'open-project'; project: Project }
   | { type: 'set-preset'; preset: Preset }
+  | { type: 'add-sfx'; clip: SfxClip }
+  | { type: 'remove-sfx'; id: string }
+  | { type: 'set-transition-all'; transition: TransitionConfig }
   | { type: 'split-clip'; id: string; at: number }
   | { type: 'delete-clip'; id: string }
   | { type: 'undo' }
@@ -21,7 +24,7 @@ export type Action =
 export interface State { past: Project[]; present: Project; future: Project[]; }
 
 export function createState(init: Init): State {
-  const present: Project = { version: 1, ...init, settings: { ...init.settings }, clips: [], proposals: [], captions: [] };
+  const present: Project = { version: 1, ...init, settings: { ...init.settings }, clips: [], proposals: [], captions: [], sfx: [], subtitleStyle: 'karaoke' };
   return { past: [], present, future: [] };
 }
 
@@ -49,12 +52,29 @@ export function reduce(state: State, action: Action): State {
           clips: action.project.clips.map((c) => ({ ...c })),
           captions: action.project.captions.map((c) => ({ ...c })),
           proposals: action.project.proposals.map((p) => ({ ...p })),
+          sfx: action.project.sfx?.map((clip) => ({ ...clip })) ?? [],
+          subtitleStyle: action.project.subtitleStyle ?? 'karaoke',
         },
         future: [],
       };
     case 'set-preset':
       if (state.present.preset === action.preset) return state;
       return push(state, { ...state.present, preset: action.preset });
+    case 'add-sfx':
+      return push(state, { ...state.present, sfx: [...(state.present.sfx ?? []), { ...action.clip }] });
+    case 'remove-sfx': {
+      const sfx = state.present.sfx ?? [];
+      if (!sfx.some((clip) => clip.id === action.id)) return state;
+      return push(state, { ...state.present, sfx: sfx.filter((clip) => clip.id !== action.id) });
+    }
+    case 'set-transition-all':
+      return push(state, {
+        ...state.present,
+        clips: state.present.clips.map((clip, index, all) => ({
+          ...clip,
+          transitionOut: index === all.length - 1 ? undefined : { ...action.transition },
+        })),
+      });
     case 'split-clip': {
       if (!Number.isFinite(action.at)) return state;
       const clips: Clip[] = [];

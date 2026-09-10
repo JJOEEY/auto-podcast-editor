@@ -1,14 +1,16 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { basename, extname, join } from 'node:path';
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { JobQueue } from './jobs.js';
 import { spawnSync } from 'node:child_process';
 import { buildAudioExtractArgs, runFfprobe } from './media.js';
 import { buildWhisperArgs, parseProgressLine, whisperJsonPath } from './whisper.js';
 import { parseWhisperJson } from '../core/whisperJson.js';
 import { buildRenderProps, writePropsFile } from '../core/propsFile.js';
+import { importSfx, listSfx } from './sfxLibrary.js';
 import { buildCaptionTxt, buildSrt } from '../core/exportText.js';
 import { extensionForFormat, validateExportRequest, type ExportRequest } from '../core/export.js';
+import { audioFilterForPreset } from '../core/audioPresets.js';
 import type { Project } from '../core/types.js';
 import { compressTimeline } from '../core/compressedTimeline.js';
 import { spawnAsync } from './spawnAsync.js';
@@ -59,6 +61,17 @@ ipcMain.handle('dialog:open-directory', async () => {
   const result = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
   return result.canceled ? null : result.filePaths[0];
 });
+
+ipcMain.handle('dialog:open-sfx', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openFile'],
+    filters: [{ name: 'SFX audio', extensions: ['wav', 'mp3', 'ogg', 'm4a', 'aac', 'flac'] }],
+  });
+  return result.canceled ? null : result.filePaths[0];
+});
+
+ipcMain.handle('sfx:list', () => listSfx(app.getPath('userData'), join(app.getAppPath(), 'assets', 'sfx', 'bundled')));
+ipcMain.handle('sfx:import', (_e, sourcePath: string) => importSfx(app.getPath('userData'), sourcePath));
 
 ipcMain.handle('media:probe', (_e, filePath: string) =>
   queue.enqueue('probe', async () =>
@@ -111,7 +124,7 @@ ipcMain.handle('job:render', (_e, project: Project, request: ExportRequest) => {
     const propsPath = join(app.getPath('userData'), 'jobs', `${safeName}-props.json`);
     await mkdir(join(app.getPath('userData'), 'jobs'), { recursive: true });
     const burnCaptions = request.captions === 'burn' || request.captions === 'both';
-    await writePropsFile(propsPath, buildRenderProps(project.sourcePath, project.clips, burnCaptions ? project.captions : []));
+    await writePropsFile(propsPath, buildRenderProps(project.sourcePath, project.clips, burnCaptions ? project.captions : [], project.sfx ?? [], project.subtitleStyle ?? 'karaoke'));
     const compId = compIdForPreset(project.preset);
     const scale = request.quality === '720p' ? 2 / 3 : request.quality === '2k' ? 4 / 3 : request.quality === '4k' ? 2 : 1;
     const isAudio = request.target === 'audio';
@@ -135,6 +148,16 @@ ipcMain.handle('job:render', (_e, project: Project, request: ExportRequest) => {
       const audio = spawnAsync('ffmpeg', audioArgs);
       ctx.onKill(audio.kill);
       checkSpawn('ffmpeg', { status: await audio.done });
+    }
+
+    const audioFilter = audioFilterForPreset(request.voicePreset ?? 'podcast');
+    if (audioFilter && request.target !== 'video-mute') {
+      const filteredPath = `${mediaPath}.voice${extension}`;
+      const filtered = spawnAsync('ffmpeg', ['-y', '-i', mediaPath, '-map', '0:v:0?', '-map', '0:a:0?', '-c:v', 'copy', '-af', audioFilter, filteredPath]);
+      ctx.onKill(filtered.kill);
+      checkSpawn('ffmpeg', { status: await filtered.done });
+      await rm(mediaPath, { force: true });
+      await rename(filteredPath, mediaPath);
     }
 
     const srtPath = `${basePath}.srt`;

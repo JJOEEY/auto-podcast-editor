@@ -3,7 +3,7 @@ import { PodcastComposition, type PodcastProps } from './PodcastComposition.js';
 import { PodcastHorizontal, type PodcastHorizontalProps } from './PodcastHorizontal.js';
 import { compressTimeline, TIMELINE_FPS } from '../../core/compressedTimeline.js';
 
-const defaultProps: PodcastProps = { sourcePath: '', clips: [], captions: [] };
+const defaultProps: PodcastProps = { sourcePath: '', clips: [], captions: [], sfx: [], subtitleStyle: 'karaoke' };
 const horizontalDefaults: PodcastHorizontalProps = defaultProps;
 
 function metadata({ props }: { props: PodcastProps }) {

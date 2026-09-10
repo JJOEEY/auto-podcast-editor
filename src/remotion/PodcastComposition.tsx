@@ -1,14 +1,46 @@
-import { AbsoluteFill, OffthreadVideo, Sequence } from 'remotion';
-import type { CaptionLine, Clip } from '../../core/types.js';
+import { AbsoluteFill, Audio, OffthreadVideo, Sequence, interpolate, useCurrentFrame } from 'remotion';
+import type { CaptionLine, Clip, SfxClip, SubtitleStyleId } from '../../core/types.js';
 import { compressTimeline, TIMELINE_FPS, toFrames } from '../../core/compressedTimeline.js';
+import { TransitionOverlay } from './TransitionOverlay.js';
 
 export type PodcastProps = {
   sourcePath: string;
   clips: Clip[];
   captions: CaptionLine[];
+  sfx: SfxClip[];
+  subtitleStyle: SubtitleStyleId;
 };
 
-export function PodcastComposition({ sourcePath, clips, captions }: PodcastProps): JSX.Element {
+export function CaptionView({ caption, sourceStart, style, bottomPadding = 460 }: { caption: CaptionLine; sourceStart: number; style: SubtitleStyleId; bottomPadding?: number }): JSX.Element {
+  const frame = useCurrentFrame();
+  const sourceTime = sourceStart + frame / TIMELINE_FPS;
+  const words = caption.words ?? [];
+  const activeIndex = words.findIndex((word) => sourceTime >= word.start && sourceTime <= word.end);
+  const visibleWords = style === 'typewriter' && activeIndex >= 0 ? words.slice(0, activeIndex + 1) : words;
+  const text = visibleWords.length > 0 ? visibleWords.map((word) => word.text).join(' ') : caption.text;
+  const base: React.CSSProperties = {
+    color: '#fff',
+    fontSize: 64,
+    fontWeight: 800,
+    textAlign: 'center',
+    padding: '0 48px',
+    lineHeight: 1.1,
+  };
+  const box = style === 'box' ? { background: 'rgba(0,0,0,.72)', borderRadius: 18, padding: '14px 24px' } : {};
+  const neon = style === 'neon' ? { textShadow: '0 0 14px #22d3ee, 0 0 28px #2563eb' } : {};
+  const scale = activeIndex >= 0 && style === 'pop' ? interpolate(frame, [0, 4, 8], [0.94, 1.08, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }) : 1;
+  return (
+    <AbsoluteFill style={{ justifyContent: 'flex-end', alignItems: 'center', paddingBottom: bottomPadding }}>
+      <div style={{ ...base, ...box, ...neon, transform: `scale(${scale})` }}>
+        {words.length > 0 && (style === 'karaoke' || style === 'pop' || style === 'neon')
+          ? words.map((word, index) => <span key={`${word.start}-${index}`} style={{ color: index === activeIndex ? '#facc15' : base.color }}>{`${word.text}${index === words.length - 1 ? '' : ' '}`}</span>)
+          : text}
+      </div>
+    </AbsoluteFill>
+  );
+}
+
+export function PodcastComposition({ sourcePath, clips, captions, sfx, subtitleStyle }: PodcastProps): JSX.Element {
   const timeline = compressTimeline(clips, captions, TIMELINE_FPS);
   return (
     <AbsoluteFill style={{ backgroundColor: '#000' }}>
@@ -20,16 +52,26 @@ export function PodcastComposition({ sourcePath, clips, captions }: PodcastProps
           </Sequence>
         );
       })}
+      {timeline.video.slice(0, -1).map((p, index) => {
+        const next = timeline.video[index + 1];
+        const transition = p.item.transitionOut;
+        if (!transition || transition.durationFrames <= 0) return null;
+        const from = Math.max(0, Math.round(next.outStart * TIMELINE_FPS) - Math.floor(transition.durationFrames / 2));
+        return <Sequence key={`transition-${p.item.id}`} from={from} durationInFrames={transition.durationFrames}><TransitionOverlay config={transition} /></Sequence>;
+      })}
       {timeline.captions.map((p) => {
         const { from, dur } = toFrames(p.outStart, p.outEnd);
         return (
           <Sequence key={`${p.item.id}-${Math.round(p.outStart * 1000)}`} from={from} durationInFrames={dur}>
-          <AbsoluteFill style={{ justifyContent: 'flex-end', alignItems: 'center', paddingBottom: 460 }}>
-            <div style={{ color: '#fff', fontSize: 64, fontWeight: 800, textAlign: 'center', padding: '0 48px' }}>{p.item.text}</div>
-          </AbsoluteFill>
-        </Sequence>
+            <CaptionView caption={p.item} sourceStart={p.sourceStart ?? p.item.start} style={subtitleStyle} />
+          </Sequence>
         );
       })}
+      {sfx.map((clip) => (
+        <Sequence key={clip.id} from={Math.round(clip.start * TIMELINE_FPS)} durationInFrames={Math.max(1, Math.round(clip.duration * TIMELINE_FPS))}>
+          <Audio src={clip.path} volume={clip.volume} />
+        </Sequence>
+      ))}
     </AbsoluteFill>
   );
 }

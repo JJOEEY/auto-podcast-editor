@@ -1,5 +1,6 @@
 export type ExportFormat = 'mp4-h264' | 'mp4-hevc' | 'webm-vp9' | 'mov-prores' | 'mp3' | 'wav';
 export type ExportQuality = '720p' | '1080p' | '2k' | '4k';
+export type VoicePreset = 'none' | 'clean' | 'podcast' | 'broadcast' | 'warm';
 
 export interface ExportRequest {
   fileName: string;
@@ -13,6 +14,7 @@ export interface ExportRequest {
   range: 'all' | 'inout' | 'clip';
   thumbSec: number;
   hashtags: [string, string, string, string];
+  voicePreset?: VoicePreset;
 }
 
 const BITRATES: Record<ExportFormat, number> = {

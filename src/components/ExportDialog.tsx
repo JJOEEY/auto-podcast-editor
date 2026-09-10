@@ -33,6 +33,7 @@ export function ExportDialog({ project, onClose, onExport }: Props): JSX.Element
   const [range, setRange] = useState<ExportRequest['range']>('all');
   const [thumbSec, setThumbSec] = useState(1);
   const [hashtags, setHashtags] = useState(buildHashtags(project.name));
+  const [voicePreset, setVoicePreset] = useState<NonNullable<ExportRequest['voicePreset']>>('podcast');
   const [presetName, setPresetName] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -42,8 +43,8 @@ export function ExportDialog({ project, onClose, onExport }: Props): JSX.Element
   }, [project.name]);
 
   const request = useMemo<ExportRequest>(() => ({
-    fileName, dir, format, quality, bitrateMode, customMbps, target, captions, range, thumbSec, hashtags,
-  }), [fileName, dir, format, quality, bitrateMode, customMbps, target, captions, range, thumbSec, hashtags]);
+    fileName, dir, format, quality, bitrateMode, customMbps, target, captions, range, thumbSec, hashtags, voicePreset,
+  }), [fileName, dir, format, quality, bitrateMode, customMbps, target, captions, range, thumbSec, hashtags, voicePreset]);
 
   const estimated = estimateBytes(request, project.durationSec);
 
@@ -132,6 +133,11 @@ export function ExportDialog({ project, onClose, onExport }: Props): JSX.Element
         <fieldset disabled={target === 'audio'}><legend>Subtitle</legend>
           {(['burn', 'srt', 'both'] as ExportRequest['captions'][]).map((item) => <label key={item} style={{ marginRight: 12 }}><input type="radio" checked={captions === item} onChange={() => setCaptions(item)} />{item}</label>)}
         </fieldset>
+        <label>Voice enhance
+          <select value={voicePreset} onChange={(e) => setVoicePreset(e.target.value as NonNullable<ExportRequest['voicePreset']>)}>
+            <option value="podcast">Podcast</option><option value="clean">Clean</option><option value="broadcast">Broadcast</option><option value="warm">Warm</option><option value="none">Tắt</option>
+          </select>
+        </label>
         <label>Thumbnail tại giây <input type="number" min="0" step="0.1" value={thumbSec} onChange={(e) => setThumbSec(Number(e.target.value))} /></label>
         <label>Hashtag (4 tag, cách nhau bằng dấu phẩy)<input value={hashtags.join(', ')} onChange={(e) => setHashtags(e.target.value.split(',').map((x) => x.trim()).filter(Boolean).slice(0, 4) as ExportRequest['hashtags'])} style={{ display: 'block', width: '100%' }} /></label>
 

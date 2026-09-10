@@ -2,7 +2,13 @@ import type { CaptionLine, Clip } from './types.js';
 
 export const TIMELINE_FPS = 30;
 
-export interface Placed<T> { item: T; outStart: number; outEnd: number; }
+export interface Placed<T> {
+  item: T;
+  outStart: number;
+  outEnd: number;
+  sourceStart?: number;
+  sourceEnd?: number;
+}
 
 export interface CompressedTimeline {
   video: Placed<Clip>[];
@@ -25,7 +31,7 @@ export function compressTimeline(clips: Clip[], captions: CaptionLine[], fps = T
   for (const c of sorted) {
     const dur = c.end - c.start;
     if (dur <= 0) continue;
-    const p = { item: c, outStart: cursor, outEnd: cursor + dur };
+    const p = { item: c, outStart: cursor, outEnd: cursor + dur, sourceStart: c.start, sourceEnd: c.end };
     cursor += dur;
     video.push(p);
   }
@@ -36,7 +42,7 @@ export function compressTimeline(clips: Clip[], captions: CaptionLine[], fps = T
       const e = Math.min(cap.end, keeper.item.end);
       if (e - s <= 0) continue;
       const offset = keeper.outStart - keeper.item.start;
-      placedCaps.push({ item: cap, outStart: s + offset, outEnd: e + offset });
+      placedCaps.push({ item: cap, outStart: s + offset, outEnd: e + offset, sourceStart: s, sourceEnd: e });
     }
   }
   placedCaps.sort((a, b) => a.outStart - b.outStart);

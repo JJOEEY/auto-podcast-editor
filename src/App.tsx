@@ -10,6 +10,9 @@ import { Timeline } from './components/Timeline.js';
 import { Preview } from './components/Preview.js';
 import { CutProposals } from './components/CutProposals.js';
 import { ExportDialog } from './components/ExportDialog.js';
+import { SfxLibrary } from './components/SfxLibrary.js';
+import { makeSfxClip } from '../core/sfxLibrary.js';
+import { decorateTransitions, TRANSITION_PRESETS, transitionConfig } from '../core/effects.js';
 
 export function App(): JSX.Element {
   const [state, dispatch] = useReducer(
@@ -21,6 +24,7 @@ export function App(): JSX.Element {
   const [progress, setProgress] = useState(0);
   const [busy, setBusy] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [transitionType, setTransitionType] = useState<'hard-cut' | 'fade' | 'glitch' | 'film-burn'>('fade');
 
   useEffect(() => window.api.onProgress((event) => {
     if (event.name === 'transcribe') setProgress(Math.round(event.fraction * 100));
@@ -45,6 +49,8 @@ export function App(): JSX.Element {
           captions: [],
           preset: 'vertical',
           settings: createDefaultSettings(),
+          sfx: [],
+          subtitleStyle: 'karaoke',
         },
       });
       setStatus(`Đã import: ${name} (${durationSec.toFixed(1)}s)`);
@@ -91,7 +97,7 @@ export function App(): JSX.Element {
       const keeps = complementRanges(proposals, state.present.durationSec);
       dispatch({
         type: 'apply-analysis',
-        clips: buildKeepClips(proposals, state.present.durationSec),
+        clips: decorateTransitions(buildKeepClips(proposals, state.present.durationSec), proposals),
         captions: filterCaptionsToKeeps(captions, keeps),
         proposals,
       });
@@ -165,10 +171,20 @@ export function App(): JSX.Element {
         </div>
       )}
       <section style={{ marginTop: 24 }}>
-        <Preview sourcePath={state.present.sourcePath} clips={state.present.clips} captions={state.present.captions} preset={state.present.preset} />
+        <Preview sourcePath={state.present.sourcePath} clips={state.present.clips} captions={state.present.captions} sfx={state.present.sfx} subtitleStyle={state.present.subtitleStyle} preset={state.present.preset} />
       </section>
       <section style={{ marginTop: 24 }}>
         <CutProposals proposals={state.present.proposals} onApply={applySelectedProposals} />
+      </section>
+      <section style={{ marginTop: 24 }}>
+        <SfxLibrary onAdd={(asset) => dispatch({ type: 'add-sfx', clip: makeSfxClip(asset, 0) })} />
+      </section>
+      <section style={{ marginTop: 24 }}>
+        <h2>Transition</h2>
+        <select value={transitionType} onChange={(event) => setTransitionType(event.target.value as typeof transitionType)}>
+          {TRANSITION_PRESETS.filter((preset) => preset.id !== 'hard-cut').map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
+        </select>
+        <button onClick={() => dispatch({ type: 'set-transition-all', transition: transitionConfig(transitionType) })} disabled={state.present.clips.length < 2}>Áp dụng cho các cut</button>
       </section>
       <section style={{ marginTop: 24 }}>
         <Timeline

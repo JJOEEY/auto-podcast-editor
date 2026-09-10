@@ -14,6 +14,7 @@ export function chunkCaption(words: Word[]): CaptionLine[] {
       start: current[0].start,
       end: current[current.length - 1].end,
       text: current.map((w) => w.text).join(' '),
+      words: [...current],
     });
     current = [];
   };

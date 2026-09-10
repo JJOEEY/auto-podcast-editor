@@ -9,10 +9,12 @@ interface Props {
   sourcePath: string;
   clips: Clip[];
   captions: CaptionLine[];
+  sfx?: import('../../core/types.js').SfxClip[];
+  subtitleStyle?: import('../../core/types.js').SubtitleStyleId;
   preset: Preset;
 }
 
-export function Preview({ sourcePath, clips, captions, preset }: Props): JSX.Element {
+export function Preview({ sourcePath, clips, captions, preset, sfx = [], subtitleStyle = 'karaoke' }: Props): JSX.Element {
   if (!sourcePath) {
     return <div style={{ display: 'grid', placeItems: 'center', minHeight: 360, color: '#64748b' }}>Import video để xem preview</div>;
   }
@@ -26,7 +28,7 @@ export function Preview({ sourcePath, clips, captions, preset }: Props): JSX.Ele
     <div style={{ position: 'relative', width: '100%', maxWidth: vertical ? 360 : 720, margin: '0 auto' }}>
       <Player
         component={Component}
-        inputProps={{ sourcePath, clips, captions }}
+        inputProps={{ sourcePath, clips, captions, sfx, subtitleStyle }}
         durationInFrames={timeline.totalFrames}
         fps={TIMELINE_FPS}
         compositionWidth={width}
