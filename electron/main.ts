@@ -13,6 +13,7 @@ import { importSfx, listSfx } from './sfxLibrary.js';
 import { buildCaptionTxt, buildSrt } from '../core/exportText.js';
 import { extensionForFormat, validateExportRequest, type ExportRequest } from '../core/export.js';
 import { audioFilterForPreset } from '../core/audioPresets.js';
+import { buildCapabilitySnapshot } from './capabilities.js';
 import type { Project } from '../core/types.js';
 import { compressTimeline } from '../core/compressedTimeline.js';
 import { spawnAsync } from './spawnAsync.js';
@@ -112,6 +113,12 @@ ipcMain.handle('project:save', (_e, filePath: string, project: Project) => saveP
 ipcMain.handle('sfx:list', () => listSfx(app.getPath('userData'), join(app.getAppPath(), 'assets', 'sfx', 'bundled')));
 ipcMain.handle('sfx:import', (_e, sourcePath: string) => importSfx(app.getPath('userData'), sourcePath));
 
+ipcMain.handle('ffmpeg:capabilities', () => {
+  const binary = runtimeBinary('ffmpeg');
+  const run = (args: string[]) => String(spawnSync(binary, args, { encoding: 'utf8' }).stdout ?? '');
+  return buildCapabilitySnapshot(run(['-hide_banner', '-encoders']), run(['-hide_banner', '-filters']), run(['-hide_banner', '-hwaccels']));
+});
+
 ipcMain.handle('media:probe', (_e, filePath: string) =>
   queue.enqueue('probe', async () =>
     runFfprobe(filePath, (cmd, args) => {
@@ -166,11 +173,12 @@ ipcMain.handle('job:render', (_e, project: Project, request: ExportRequest) => {
     const renderProps = buildRenderProps(project.sourcePath, project.clips, burnCaptions ? project.captions : [], project.sfx ?? [], project.subtitleStyle ?? 'karaoke');
     await writePropsFile(propsPath, renderProps);
     const compId = compIdForPreset(project.preset);
-    const scale = request.quality === '720p' ? 2 / 3 : request.quality === '2k' ? 4 / 3 : request.quality === '4k' ? 2 : 1;
+    const scale = request.quality === '720p' ? 2 / 3 : request.quality === '2k' ? 4 / 3 : request.quality === '4k' ? 2 : request.quality === '8k' ? 4 : 1;
+    const advanced = ['mp4-av1', 'mp4-vvc', 'mov-dnxhr', 'mkv-ffv1'].includes(request.format);
     const isAudio = request.target === 'audio';
-    const renderPath = isAudio ? join(app.getPath('userData'), 'jobs', `${safeName}-intermediate.mp4`) : mediaPath;
+    const renderPath = isAudio || advanced ? join(app.getPath('userData'), 'jobs', `${safeName}-intermediate.mp4`) : mediaPath;
     const bitrate = request.bitrateMode === 'custom' && request.customMbps ? `${request.customMbps}M` : undefined;
-    const codec = isAudio ? 'h264' : request.format === 'mp4-hevc' ? 'h265' : request.format === 'webm-vp9' ? 'vp9' : request.format === 'mov-prores' ? 'prores' : 'h264';
+    const codec = isAudio || advanced ? 'h264' : request.format === 'mp4-hevc' ? 'h265' : request.format === 'webm-vp9' ? 'vp9' : request.format === 'mov-prores' ? 'prores' : 'h264';
     await renderRemotion({
       appRoot: app.getAppPath(),
       compId,
@@ -181,10 +189,25 @@ ipcMain.handle('job:render', (_e, project: Project, request: ExportRequest) => {
       muted: request.target === 'video-mute',
       videoBitrate: bitrate,
       audioCodec: request.format === 'webm-vp9' ? 'opus' : request.format === 'mov-prores' ? 'pcm-16' : 'aac',
+      width: request.quality === 'custom' ? request.customWidth : undefined,
+      height: request.quality === 'custom' ? request.customHeight : undefined,
       onProgress: (fraction) => ctx.report(0.1 + fraction * 0.7),
       onKill: ctx.onKill,
     });
     ctx.report(0.8);
+
+    if (advanced) {
+      const transcodeArgs = request.format === 'mp4-av1'
+        ? ['-y', '-i', renderPath, '-c:v', 'libsvtav1', '-crf', '30', '-c:a', 'aac', mediaPath]
+        : request.format === 'mp4-vvc'
+          ? ['-y', '-i', renderPath, '-c:v', 'libvvenc', '-c:a', 'aac', mediaPath]
+          : request.format === 'mov-dnxhr'
+            ? ['-y', '-i', renderPath, '-c:v', 'dnxhd', '-profile:v', 'dnxhr_hq', '-c:a', 'pcm_s16le', mediaPath]
+            : ['-y', '-i', renderPath, '-c:v', 'ffv1', '-level', '3', '-c:a', 'flac', mediaPath];
+      const transcoded = spawnAsync(runtimeBinary('ffmpeg'), transcodeArgs);
+      ctx.onKill(transcoded.kill);
+      checkSpawn('ffmpeg', { status: await transcoded.done });
+    }
 
     if (isAudio) {
       const audioArgs = request.format === 'mp3'

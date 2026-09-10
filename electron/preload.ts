@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('api', {
   saveProject: (suggestedName: string) => ipcRenderer.invoke('dialog:save-project', suggestedName),
   loadProject: (filePath: string) => ipcRenderer.invoke('project:load', filePath),
   writeProject: (filePath: string, project: Project) => ipcRenderer.invoke('project:save', filePath, project),
+  capabilities: () => ipcRenderer.invoke('ffmpeg:capabilities'),
   listSfx: () => ipcRenderer.invoke('sfx:list') as Promise<SfxAsset[]>,
   importSfx: (sourcePath: string) => ipcRenderer.invoke('sfx:import', sourcePath) as Promise<SfxAsset>,
   probe: (filePath: string) => ipcRenderer.invoke('media:probe', filePath),

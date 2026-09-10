@@ -26,6 +26,8 @@ export function ExportDialog({ project, onClose, onExport }: Props): JSX.Element
   const [dir, setDir] = useState(() => localStorage.getItem('ape.exportDir') || '');
   const [format, setFormat] = useState<ExportFormat>('mp4-h264');
   const [quality, setQuality] = useState<ExportQuality>('1080p');
+  const [customWidth, setCustomWidth] = useState(1920);
+  const [customHeight, setCustomHeight] = useState(1080);
   const [bitrateMode, setBitrateMode] = useState<'auto' | 'custom'>('auto');
   const [customMbps, setCustomMbps] = useState(12);
   const [target, setTarget] = useState<ExportRequest['target']>('video-audio');
@@ -43,8 +45,8 @@ export function ExportDialog({ project, onClose, onExport }: Props): JSX.Element
   }, [project.name]);
 
   const request = useMemo<ExportRequest>(() => ({
-    fileName, dir, format, quality, bitrateMode, customMbps, target, captions, range, thumbSec, hashtags, voicePreset,
-  }), [fileName, dir, format, quality, bitrateMode, customMbps, target, captions, range, thumbSec, hashtags, voicePreset]);
+    fileName, dir, format, quality, customWidth, customHeight, bitrateMode, customMbps, target, captions, range, thumbSec, hashtags, voicePreset,
+  }), [fileName, dir, format, quality, customWidth, customHeight, bitrateMode, customMbps, target, captions, range, thumbSec, hashtags, voicePreset]);
 
   const estimated = estimateBytes(request, project.durationSec);
 
@@ -108,15 +110,16 @@ export function ExportDialog({ project, onClose, onExport }: Props): JSX.Element
         </select></label>
 
         <fieldset><legend>Định dạng</legend>
-          {(['mp4-h264', 'mp4-hevc', 'webm-vp9', 'mov-prores', 'mp3', 'wav'] as ExportFormat[]).map((item) => (
+          {(['mp4-h264', 'mp4-hevc', 'mp4-av1', 'mp4-vvc', 'webm-vp9', 'mov-prores', 'mov-dnxhr', 'mkv-ffv1', 'mp3', 'wav'] as ExportFormat[]).map((item) => (
             <label key={item} style={{ marginRight: 12 }}><input type="radio" checked={format === item} onChange={() => setFormat(item)} />{item}</label>
           ))}
         </fieldset>
 
         <fieldset disabled={target === 'audio'}><legend>Chất lượng</legend>
-          {(['720p', '1080p', '2k', '4k'] as ExportQuality[]).map((item) => (
+          {(['720p', '1080p', '2k', '4k', '8k', 'custom'] as ExportQuality[]).map((item) => (
             <label key={item} style={{ marginRight: 12 }}><input type="radio" checked={quality === item} onChange={() => setQuality(item)} />{item}</label>
           ))}
+          {quality === 'custom' && <span><input type="number" min="320" value={customWidth} onChange={(e) => setCustomWidth(Number(e.target.value))} /> × <input type="number" min="240" value={customHeight} onChange={(e) => setCustomHeight(Number(e.target.value))} /></span>}
         </fieldset>
 
         <label>Bitrate

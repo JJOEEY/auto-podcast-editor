@@ -15,6 +15,8 @@ export interface ProgrammaticRenderOptions {
   audioCodec?: 'aac' | 'opus' | 'pcm-16';
   onProgress?: (fraction: number) => void;
   onKill?: (kill: () => void) => void;
+  width?: number;
+  height?: number;
 }
 
 let bundlePromise: Promise<string> | null = null;
@@ -32,8 +34,9 @@ export async function renderRemotion(options: ProgrammaticRenderOptions): Promis
     id: options.compId,
     inputProps: options.props as unknown as Record<string, unknown>,
   });
+  const sizedComposition = options.width && options.height ? { ...composition, width: options.width, height: options.height } : composition;
   await renderMedia({
-    composition,
+    composition: sizedComposition,
     serveUrl,
     inputProps: options.props as unknown as Record<string, unknown>,
     codec: options.codec,
