@@ -3073,6 +3073,8 @@ git commit -m "fix: honest probe errors, reject unimplemented preset"
 
 In order: (a) props-JSON writer + wire App → transcribe → render end-to-end; (b) materialize all four render outputs (load project → buildSrt→.srt, hashtags→caption.txt, ffmpeg thumb, compId by preset) and assert existence before returning; (c) async spawn + progress IPC + cancellable jobs (main thread freezes for minutes today); (d) cancel channel + reset-on-new-run; (e) transcribe input validation + `join()` paths (Windows); (f) trim-quantization unification, Readonly defaults, 9b reset-guard tests (filed earlier).
 
+Added from final full-branch review (none blocking MVP): (g) extend `loadProject` shape guard to `captions`/`proposals`/`preset`/`name`; (h) copy-on-write or freeze for split/delete paths (only `apply-auto-cuts` deep-copies today); (i) validate `.ape.json` extension in `buildRenderOutputs` (else outputs nest under a filename-as-directory); (j) derive split point from playhead instead of `start + 1`; (k) production `loadFile` fallback in main.ts; (l) verify `--max-len 1` word-granularity effect against a real whisper-cli binary during manual QA.
+
 ---
 
 ## Out of scope for this plan (follow-up plans)
