@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { basename, extname, join } from 'node:path';
+import { existsSync } from 'node:fs';
 import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { JobQueue } from './jobs.js';
 import { spawnSync } from 'node:child_process';
@@ -20,6 +21,14 @@ import { renderRemotion } from './remotionRenderer.js';
 
 const queue = new JobQueue();
 let win: BrowserWindow | null = null;
+
+function runtimeBinary(name: string): string {
+  if (app.isPackaged) {
+    const packaged = join(process.resourcesPath, 'bin', `${name}.exe`);
+    if (existsSync(packaged)) return packaged;
+  }
+  return name;
+}
 
 queue.onEvent((e) => {
   if (e.type === 'progress') win?.webContents.send('job:progress', { name: e.name, fraction: e.fraction });
@@ -77,7 +86,7 @@ ipcMain.handle('sfx:import', (_e, sourcePath: string) => importSfx(app.getPath('
 ipcMain.handle('media:probe', (_e, filePath: string) =>
   queue.enqueue('probe', async () =>
     runFfprobe(filePath, (cmd, args) => {
-      const r = spawnSync(cmd, args, { encoding: 'utf8' });
+      const r = spawnSync(runtimeBinary(cmd), args, { encoding: 'utf8' });
       checkSpawn(cmd, r);
       return { stdout: r.stdout as string };
     }),
@@ -92,13 +101,13 @@ ipcMain.handle('ai:transcribe', (_e, filePath: string, modelPath: string) => {
     const workDir = join(app.getPath('userData'), 'jobs', stem || 'video');
     await mkdir(workDir, { recursive: true });
     const wav = join(workDir, 'audio16k.wav');
-    const ffmpeg = spawnAsync('ffmpeg', buildAudioExtractArgs(filePath, wav));
+    const ffmpeg = spawnAsync(runtimeBinary('ffmpeg'), buildAudioExtractArgs(filePath, wav));
     ctx.onKill(ffmpeg.kill);
     checkSpawn('ffmpeg', { status: await ffmpeg.done });
     ctx.report(0.05);
 
     const outBase = join(workDir, 'transcript');
-    const whisper = spawnAsync('whisper-cli', buildWhisperArgs(modelPath, wav, outBase), {
+    const whisper = spawnAsync(runtimeBinary('whisper-cli'), buildWhisperArgs(modelPath, wav, outBase), {
       onLine: (line) => {
         const percent = parseProgressLine(line);
         if (percent !== null) ctx.report(0.05 + percent * 0.0095);
@@ -152,7 +161,7 @@ ipcMain.handle('job:render', (_e, project: Project, request: ExportRequest) => {
       const audioArgs = request.format === 'mp3'
         ? ['-y', '-i', renderPath, '-vn', '-codec:a', 'libmp3lame', '-b:a', '192k', mediaPath]
         : ['-y', '-i', renderPath, '-vn', '-c:a', 'pcm_s16le', mediaPath];
-      const audio = spawnAsync('ffmpeg', audioArgs);
+      const audio = spawnAsync(runtimeBinary('ffmpeg'), audioArgs);
       ctx.onKill(audio.kill);
       checkSpawn('ffmpeg', { status: await audio.done });
     }
@@ -160,7 +169,7 @@ ipcMain.handle('job:render', (_e, project: Project, request: ExportRequest) => {
     const audioFilter = audioFilterForPreset(request.voicePreset ?? 'podcast');
     if (audioFilter && request.target !== 'video-mute') {
       const filteredPath = `${mediaPath}.voice${extension}`;
-      const filtered = spawnAsync('ffmpeg', ['-y', '-i', mediaPath, '-map', '0:v:0?', '-map', '0:a:0?', '-c:v', 'copy', '-af', audioFilter, filteredPath]);
+      const filtered = spawnAsync(runtimeBinary('ffmpeg'), ['-y', '-i', mediaPath, '-map', '0:v:0?', '-map', '0:a:0?', '-c:v', 'copy', '-af', audioFilter, filteredPath]);
       ctx.onKill(filtered.kill);
       checkSpawn('ffmpeg', { status: await filtered.done });
       await rm(mediaPath, { force: true });
@@ -183,7 +192,7 @@ ipcMain.handle('job:render', (_e, project: Project, request: ExportRequest) => {
     await assertOutput(captionPath);
     const thumbPath = `${basePath}.png`;
     if (!isAudio) {
-      const thumb = spawnAsync('ffmpeg', ['-y', '-ss', String(Math.max(0, request.thumbSec)), '-i', mediaPath, '-frames:v', '1', '-update', '1', thumbPath]);
+      const thumb = spawnAsync(runtimeBinary('ffmpeg'), ['-y', '-ss', String(Math.max(0, request.thumbSec)), '-i', mediaPath, '-frames:v', '1', '-update', '1', thumbPath]);
       ctx.onKill(thumb.kill);
       checkSpawn('ffmpeg', { status: await thumb.done });
       await assertOutput(thumbPath);

@@ -27,6 +27,9 @@
       "core/**/*",
       "src/remotion/**/*"
     ],
+    "extraResources": [
+      { "from": "assets/bin", "to": "bin" }
+    ],
     "asar": true,
     "win": {
       "target": [
