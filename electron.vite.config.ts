@@ -6,6 +6,7 @@ export default defineConfig({
   main: {
     build: {
       rollupOptions: {
+        external: ['@remotion/bundler', '@remotion/renderer'],
         input: {
           index: resolve(__dirname, 'electron/main.ts'),
         },
