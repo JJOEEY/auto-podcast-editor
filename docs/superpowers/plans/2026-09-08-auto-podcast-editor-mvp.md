@@ -2489,6 +2489,74 @@ git commit -m "feat: gapless compressed timeline with caption remap"
 
 ---
 
+### Task 14c: Frame-exact boundaries + drop empty keepers (follow-up from 14b review)
+
+Independent rounding of `from` and `duration` can disagree by ±1 frame at cut boundaries (33ms black flash / early cut at EVERY cut — visible in output). Fix by deriving duration from quantized endpoints. Also drop zero-duration keepers (would render a 1-frame freeze) and use the shared FPS constant in Root.
+
+**Files:**
+- Modify: `core/compressedTimeline.ts`
+- Modify: `tests/compressedTimeline.test.ts` (keep 4 existing tests green)
+- Modify: `src/remotion/PodcastComposition.tsx` (use toFrames)
+- Modify: `src/remotion/Root.tsx` (`fps={TIMELINE_FPS}`)
+
+- [ ] **Step 1: Add tests**
+
+```ts
+describe('frame-exact boundaries', () => {
+  it('keeps consecutive clips contiguous (no gap, no overlap)', () => {
+    const a = toFrames(0, 10.02);
+    const b = toFrames(10.02, 20);
+    expect(a.from + a.dur).toBe(b.from);
+  });
+
+  it('clamps zero-length spans to 1 frame', () => {
+    expect(toFrames(5, 5).dur).toBe(1);
+  });
+
+  it('drops zero-duration keepers', () => {
+    const out = compressTimeline([v('k1', 0, 10), v('empty', 5, 5), v('k2', 20, 30)], []);
+    expect(out.video.map((p) => p.item.id)).toEqual(['k1', 'k2']);
+    expect(out.totalFrames).toBe(20 * TIMELINE_FPS);
+  });
+});
+```
+
+(Add `toFrames` to the existing `../core/compressedTimeline.js` import.)
+
+- [ ] **Step 2: Run to verify failures**
+
+Run: `npx vitest run tests/compressedTimeline.test.ts`
+Expected: FAIL (no toFrames export, empty keeper kept).
+
+- [ ] **Step 3: Implement** — in `core/compressedTimeline.ts`:
+1. Skip non-positive keepers in the pack loop: `if (dur <= 0) continue;` (use a for-loop instead of map).
+2. Add and export:
+
+```ts
+export interface FrameSpan { from: number; dur: number; }
+
+export function toFrames(outStart: number, outEnd: number, fps = TIMELINE_FPS): FrameSpan {
+  const from = Math.round(outStart * fps);
+  return { from, dur: Math.max(1, Math.round(outEnd * fps) - from) };
+}
+```
+
+3. In `PodcastComposition`, replace per-Sequence math with `toFrames` (import it + `TIMELINE_FPS` from core; no more inline `* 30`).
+4. In `Root`, use `fps={TIMELINE_FPS}` (import from core) instead of `fps={30}`.
+
+Document on `compressTimeline` (one-line comment): callers must supply disjoint V1 keepers in any order (sorted internally); overlapping keepers are out of contract.
+
+- [ ] **Step 4: Verify** — compressedTimeline tests PASS (7), `npm run typecheck` passes, full suite no regressions.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add core/compressedTimeline.ts tests/compressedTimeline.test.ts src/remotion/PodcastComposition.tsx src/remotion/Root.tsx
+git commit -m "fix: frame-exact cut boundaries, drop empty keepers"
+```
+
+---
+
 ### Task 15: App shell wiring + full suite green
 
 **Files:**
