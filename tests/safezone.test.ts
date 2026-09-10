@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clampToSafezone, isInsideSafezone, safeArea, VERTICAL_INSETS } from '../core/safezone.js';
+import { clampToSafezone, HORIZONTAL_INSETS, insetsForPreset, isInsideSafezone, safeArea, VERTICAL_INSETS } from '../core/safezone.js';
 
 const canvas = { w: 1080, h: 1920 };
 
@@ -16,6 +16,14 @@ describe('safezone', () => {
     const out = clampToSafezone({ x: 0, y: 0, w: 200, h: 100 }, canvas, VERTICAL_INSETS);
     expect(out.x).toBe(48);
     expect(out.y).toBe(160);
+  });
+});
+
+describe('preset insets', () => {
+  it('provides separate horizontal safezone insets', () => {
+    expect(HORIZONTAL_INSETS).toEqual({ top: 60, bottom: 120, left: 60, right: 60 });
+    expect(insetsForPreset('horizontal')).toBe(HORIZONTAL_INSETS);
+    expect(insetsForPreset('vertical')).toBe(VERTICAL_INSETS);
   });
 });
 

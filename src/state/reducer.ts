@@ -12,6 +12,7 @@ export type Action =
   | { type: 'apply-auto-cuts'; clips: Clip[] }
   | { type: 'apply-analysis'; clips: Clip[]; captions: CaptionLine[]; proposals: CutProposal[] }
   | { type: 'open-project'; project: Project }
+  | { type: 'set-preset'; preset: Preset }
   | { type: 'split-clip'; id: string; at: number }
   | { type: 'delete-clip'; id: string }
   | { type: 'undo' }
@@ -51,6 +52,9 @@ export function reduce(state: State, action: Action): State {
         },
         future: [],
       };
+    case 'set-preset':
+      if (state.present.preset === action.preset) return state;
+      return push(state, { ...state.present, preset: action.preset });
     case 'split-clip': {
       if (!Number.isFinite(action.at)) return state;
       const clips: Clip[] = [];

@@ -2,6 +2,11 @@ export interface Rect { x: number; y: number; w: number; h: number; }
 export interface Insets { top: number; bottom: number; left: number; right: number; }
 
 export const VERTICAL_INSETS: Insets = { top: 160, bottom: 420, left: 48, right: 48 };
+export const HORIZONTAL_INSETS: Insets = { top: 60, bottom: 120, left: 60, right: 60 };
+
+export function insetsForPreset(preset: 'vertical' | 'horizontal'): Insets {
+  return preset === 'vertical' ? VERTICAL_INSETS : HORIZONTAL_INSETS;
+}
 
 export function safeArea(canvas: { w: number; h: number }, insets: Insets): Rect {
   return { x: insets.left, y: insets.top, w: Math.max(0, canvas.w - insets.left - insets.right), h: Math.max(0, canvas.h - insets.top - insets.bottom) };

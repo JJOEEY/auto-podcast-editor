@@ -1,14 +1,19 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { basename, extname, join } from 'node:path';
-import { mkdir, readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { JobQueue } from './jobs.js';
 import { spawnSync } from 'node:child_process';
 import { buildAudioExtractArgs, runFfprobe } from './media.js';
 import { buildWhisperArgs, parseProgressLine, whisperJsonPath } from './whisper.js';
 import { parseWhisperJson } from '../core/whisperJson.js';
+import { buildHashtags } from '../core/hashtags.js';
+import { buildRenderProps, writePropsFile } from '../core/propsFile.js';
+import { buildCaptionTxt, buildSrt } from '../core/exportText.js';
+import { extensionForFormat, validateExportRequest, type ExportRequest } from '../core/export.js';
+import type { Project } from '../core/types.js';
 import { spawnAsync } from './spawnAsync.js';
 import { assertMeaningfulPath } from './paths.js';
-import { buildRemotionRenderArgs, buildRenderOutputs, checkSpawn, compIdForPreset } from './render.js';
+import { buildRemotionRenderArgs, checkSpawn, compIdForPreset } from './render.js';
 
 const queue = new JobQueue();
 let win: BrowserWindow | null = null;
@@ -47,6 +52,11 @@ ipcMain.handle('dialog:open-model', async () => {
     properties: ['openFile'],
     filters: [{ name: 'Whisper model', extensions: ['bin'] }],
   });
+  return result.canceled ? null : result.filePaths[0];
+});
+
+ipcMain.handle('dialog:open-directory', async () => {
+  const result = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
   return result.canceled ? null : result.filePaths[0];
 });
 
@@ -89,14 +99,64 @@ ipcMain.handle('ai:transcribe', (_e, filePath: string, modelPath: string) => {
   });
 });
 
-ipcMain.handle('job:render', (_e, projectPath: string, preset: 'vertical' | 'horizontal', propsPath: string) =>
-  queue.enqueue('render', async () => {
-    const out = buildRenderOutputs(projectPath, preset);
-    const compId = compIdForPreset(preset);
-    const rendered = spawnSync('npx', buildRemotionRenderArgs(compId, out.mp4, propsPath), { stdio: 'inherit' });
-    checkSpawn('remotion', rendered);
-    return out;
-  }),
-);
+ipcMain.handle('job:render', (_e, project: Project, request: ExportRequest) => {
+  validateExportRequest(request);
+  return queue.enqueue('render', async (ctx) => {
+    const safeName = request.fileName.trim().replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/\.[^.]+$/, '');
+    const outputDir = request.dir;
+    await mkdir(outputDir, { recursive: true });
+    const extension = extensionForFormat(request.format);
+    const mediaPath = join(outputDir, `${safeName}${extension}`);
+    const basePath = join(outputDir, safeName);
+    const propsPath = join(app.getPath('userData'), 'jobs', `${safeName}-props.json`);
+    await mkdir(join(app.getPath('userData'), 'jobs'), { recursive: true });
+    const burnCaptions = request.captions === 'burn' || request.captions === 'both';
+    await writePropsFile(propsPath, buildRenderProps(project.sourcePath, project.clips, burnCaptions ? project.captions : []));
+    const compId = compIdForPreset(project.preset);
+    const scale = request.quality === '720p' ? 2 / 3 : request.quality === '2k' ? 4 / 3 : request.quality === '4k' ? 2 : 1;
+    const isAudio = request.target === 'audio';
+    const renderPath = isAudio ? join(app.getPath('userData'), 'jobs', `${safeName}-intermediate.mp4`) : mediaPath;
+    const bitrate = request.bitrateMode === 'custom' && request.customMbps ? `${request.customMbps}M` : undefined;
+    const render = spawnAsync('npx', buildRemotionRenderArgs(compId, renderPath, propsPath, {
+      format: isAudio ? 'mp4-h264' : request.format,
+      scale,
+      videoBitrate: bitrate,
+      muted: request.target === 'video-mute',
+    }), { onLine: () => ctx.report(Math.min(0.8, 0.1 + ctxProgressPulse())) });
+    ctx.onKill(render.kill);
+    checkSpawn('remotion', { status: await render.done });
+    ctx.report(0.8);
+
+    if (isAudio) {
+      const audioArgs = request.format === 'mp3'
+        ? ['-y', '-i', renderPath, '-vn', '-codec:a', 'libmp3lame', '-b:a', '192k', mediaPath]
+        : ['-y', '-i', renderPath, '-vn', '-c:a', 'pcm_s16le', mediaPath];
+      const audio = spawnAsync('ffmpeg', audioArgs);
+      ctx.onKill(audio.kill);
+      checkSpawn('ffmpeg', { status: await audio.done });
+    }
+
+    const srtPath = `${basePath}.srt`;
+    if (request.captions === 'srt' || request.captions === 'both') {
+      await writeFile(srtPath, buildSrt(project.captions), 'utf8');
+    }
+    const captionPath = `${basePath}.caption.txt`;
+    await writeFile(captionPath, buildCaptionTxt(project.name, request.hashtags), 'utf8');
+    const thumbPath = `${basePath}.png`;
+    if (!isAudio) {
+      const thumb = spawnAsync('ffmpeg', ['-y', '-ss', String(Math.max(0, request.thumbSec)), '-i', mediaPath, '-frames:v', '1', '-update', '1', thumbPath]);
+      ctx.onKill(thumb.kill);
+      checkSpawn('ffmpeg', { status: await thumb.done });
+    }
+    ctx.report(1);
+    return { media: mediaPath, srt: request.captions === 'srt' || request.captions === 'both' ? srtPath : null, caption: captionPath, thumb: isAudio ? null : thumbPath };
+  });
+});
+
+let pulse = 0;
+function ctxProgressPulse(): number {
+  pulse = (pulse + 0.05) % 0.65;
+  return pulse;
+}
 
 void app.whenReady().then(createWindow);

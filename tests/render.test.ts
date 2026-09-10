@@ -36,6 +36,6 @@ describe('compIdForPreset', () => {
   });
 
   it('rejects horizontal until its composition exists (P1)', () => {
-    expect(() => compIdForPreset('horizontal')).toThrow('not yet implemented');
+    expect(compIdForPreset('horizontal')).toBe('PodcastHorizontal');
   });
 });

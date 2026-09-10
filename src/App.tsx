@@ -3,9 +3,13 @@ import { buildKeepClips, complementRanges, filterCaptionsToKeeps } from '../core
 import { chunkCaption } from '../core/caption.js';
 import { proposeCuts } from '../core/cutDetection.js';
 import { createDefaultSettings } from '../core/defaults.js';
+import type { ExportRequest } from '../core/export.js';
 import type { Word } from '../core/types.js';
 import { createState, reduce } from './state/reducer.js';
 import { Timeline } from './components/Timeline.js';
+import { Preview } from './components/Preview.js';
+import { CutProposals } from './components/CutProposals.js';
+import { ExportDialog } from './components/ExportDialog.js';
 
 export function App(): JSX.Element {
   const [state, dispatch] = useReducer(
@@ -16,6 +20,7 @@ export function App(): JSX.Element {
   const [status, setStatus] = useState('Chưa có video');
   const [progress, setProgress] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
 
   useEffect(() => window.api.onProgress((event) => {
     if (event.name === 'transcribe') setProgress(Math.round(event.fraction * 100));
@@ -104,6 +109,36 @@ export function App(): JSX.Element {
     setStatus('Đang hủy tác vụ...');
   };
 
+  const exportProject = async (request: ExportRequest): Promise<void> => {
+    setBusy(true);
+    setStatus('Đang render và xuất file...');
+    try {
+      await window.api.reset();
+    } catch {
+      // A previous cancelled job is still draining; the queue will surface the error.
+    }
+    try {
+      await window.api.render(state.present, request);
+      setStatus('Xuất video thành công.');
+    } catch (error) {
+      setStatus(`Xuất lỗi: ${error instanceof Error ? error.message : String(error)}`);
+      throw error;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const applySelectedProposals = (selected: typeof state.present.proposals): void => {
+    const keeps = complementRanges(selected, state.present.durationSec);
+    dispatch({
+      type: 'apply-analysis',
+      clips: buildKeepClips(selected, state.present.durationSec),
+      captions: filterCaptionsToKeeps(state.present.captions, keeps),
+      proposals: selected,
+    });
+    setStatus(`Đã áp dụng ${selected.length} đề xuất cắt.`);
+  };
+
   return (
     <div style={{ fontFamily: 'system-ui', maxWidth: 1100, margin: '0 auto', padding: 24 }}>
       <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
@@ -115,7 +150,12 @@ export function App(): JSX.Element {
           <button onClick={importVideo} disabled={busy}>Import video</button>
           <button onClick={chooseModel} disabled={busy}>{modelPath ? 'Đổi model' : 'Chọn Whisper model'}</button>
           <button onClick={transcribe} disabled={busy || !state.present.sourcePath}>Transcribe + auto-cut</button>
+          <button onClick={() => setExportOpen(true)} disabled={busy || !state.present.sourcePath}>Xuất</button>
           {busy && <button onClick={cancel}>Cancel</button>}
+          <select value={state.present.preset} onChange={(event) => dispatch({ type: 'set-preset', preset: event.target.value as 'vertical' | 'horizontal' })}>
+            <option value="vertical">Dọc 9:16</option>
+            <option value="horizontal">Ngang 16:9</option>
+          </select>
         </div>
       </header>
       {busy && (
@@ -124,6 +164,12 @@ export function App(): JSX.Element {
           <small>{progress}% — đang chạy nền, bạn có thể hủy</small>
         </div>
       )}
+      <section style={{ marginTop: 24 }}>
+        <Preview sourcePath={state.present.sourcePath} clips={state.present.clips} captions={state.present.captions} preset={state.present.preset} />
+      </section>
+      <section style={{ marginTop: 24 }}>
+        <CutProposals proposals={state.present.proposals} onApply={applySelectedProposals} />
+      </section>
       <section style={{ marginTop: 24 }}>
         <Timeline
           clips={state.present.clips}
@@ -137,6 +183,7 @@ export function App(): JSX.Element {
       <footer style={{ marginTop: 16, color: '#64748b' }}>
         {state.present.clips.length} video clip · {state.present.captions.length} caption · {state.present.proposals.length} đề xuất
       </footer>
+      {exportOpen && <ExportDialog project={state.present} onClose={() => setExportOpen(false)} onExport={exportProject} />}
     </div>
   );
 }
