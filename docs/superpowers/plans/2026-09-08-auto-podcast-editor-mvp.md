@@ -2654,6 +2654,38 @@ git commit -m "feat: app shell with timeline wired to reducer"
 
 ---
 
+### Task 15b: Make `npm run dev` actually launch (follow-up — dev run failed in Task 15)
+
+Task 15 verification found: `npm run dev` errors with "An entry point is required in the electron vite main config" — `electron.vite.config.ts` has empty `main:{}/preload:{}` and there is no renderer `index.html`. An MVP that cannot launch is not working software. Fix the config (no new features).
+
+**Files:**
+- Modify: `electron.vite.config.ts`
+- Create: `src/index.html` (or wherever the config points the renderer root)
+- Modify: nothing else unless required (keep the fix config-only if possible)
+
+- [ ] **Step 1: Read the installed electron-vite docs**
+
+Read `node_modules/electron-vite/README.md` (and its default-entry resolution if documented) to determine exactly how `main`/`preload`/`renderer` entries and renderer root are configured. Current repo layout (do NOT restructure unless the docs force it): main `electron/main.ts`, preload `electron/preload.ts`, renderer code `src/main.tsx` + `src/App.tsx` + `src/components/*`.
+
+- [ ] **Step 2: Configure entries + renderer HTML**
+
+Set explicit entries for main/preload and renderer root in `electron.vite.config.ts`; add the renderer `index.html` mounting `#root` and loading the existing `src/main.tsx`. Keep `react()` plugin. Verify `npm run typecheck` still passes.
+
+- [ ] **Step 3: Verify launch**
+
+Run: `npm run dev` with a timeout (e.g. 30s). Expected: no config error; Electron main process starts (window may appear — headless sandbox: at minimum the "entry point required" error is gone and main/preload build + renderer serves without errors). Kill after verification. Do NOT install anything. If the sandbox has no display and Electron cannot start at all, capture the exact error and report NEEDS_CONTEXT instead of guessing further.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add electron.vite.config.ts src/index.html
+git commit -m "fix: wire electron-vite entries so dev launches"
+```
+
+(Adjust the `git add` list to exactly the files changed.)
+
+---
+
 ### Task 16: Render outputs + transcribe/render IPC wiring + sample pipeline test
 
 **Files:**
