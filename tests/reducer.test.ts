@@ -2,6 +2,39 @@ import { describe, expect, it } from 'vitest';
 import { createState, reduce } from '../src/state/reducer.js';
 import { DEFAULT_SETTINGS, createDefaultSettings } from '../core/defaults.js';
 
+describe('apply-analysis', () => {
+  const init = () => createState({ name: 'ep1', sourcePath: 'x.mp4', durationSec: 100, preset: 'vertical', settings: DEFAULT_SETTINGS });
+
+  it('applies clips+captions+proposals as one undo step', () => {
+    let s = init();
+    s = reduce(s, {
+      type: 'apply-analysis',
+      clips: [{ id: 'k1', track: 'V1', start: 0, end: 10, label: 'k' }],
+      captions: [{ id: 'c1', start: 0, end: 1, text: 'hi' }],
+      proposals: [{ id: 'p1', start: 10, end: 12, kind: 'silence', reason: 't', confidence: 1 }],
+    });
+    expect(s.present.clips).toHaveLength(1);
+    expect(s.present.captions).toHaveLength(1);
+    expect(s.present.proposals).toHaveLength(1);
+    s = reduce(s, { type: 'undo' });
+    expect(s.present.clips).toHaveLength(0);
+    expect(s.present.captions).toHaveLength(0);
+    expect(s.present.proposals).toHaveLength(0);
+  });
+
+  it('open-project replaces state and clears history', () => {
+    let s = reduce(init(), { type: 'split-clip', id: 'nope', at: 1 });
+    s = reduce(s, {
+      type: 'open-project',
+      project: {
+        version: 1, name: 'ep2', sourcePath: 'y.mp4', durationSec: 50, preset: 'vertical',
+        settings: DEFAULT_SETTINGS, clips: [], proposals: [], captions: [],
+      },
+    });
+    expect(s.present.name).toBe('ep2');
+  });
+});
+
 describe('reducer undo', () => {
   it('applies a cut and undoes the whole auto batch at once', () => {
     let s = createState({ name: 'ep1', sourcePath: 'x.mp4', durationSec: 100, preset: 'vertical', settings: DEFAULT_SETTINGS });

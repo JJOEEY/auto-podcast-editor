@@ -1,4 +1,4 @@
-import type { Clip, Preset, Project, Settings } from '../../core/types.js';
+import type { CaptionLine, Clip, CutProposal, Preset, Project, Settings } from '../../core/types.js';
 
 export interface Init {
   name: string;
@@ -10,6 +10,8 @@ export interface Init {
 
 export type Action =
   | { type: 'apply-auto-cuts'; clips: Clip[] }
+  | { type: 'apply-analysis'; clips: Clip[]; captions: CaptionLine[]; proposals: CutProposal[] }
+  | { type: 'open-project'; project: Project }
   | { type: 'split-clip'; id: string; at: number }
   | { type: 'delete-clip'; id: string }
   | { type: 'undo' }
@@ -30,6 +32,25 @@ export function reduce(state: State, action: Action): State {
   switch (action.type) {
     case 'apply-auto-cuts':
       return push(state, { ...state.present, clips: action.clips.map((c) => ({ ...c })) });
+    case 'apply-analysis':
+      return push(state, {
+        ...state.present,
+        clips: action.clips.map((c) => ({ ...c })),
+        captions: action.captions.map((c) => ({ ...c })),
+        proposals: action.proposals.map((p) => ({ ...p })),
+      });
+    case 'open-project':
+      return {
+        past: [],
+        present: {
+          ...action.project,
+          settings: { ...action.project.settings },
+          clips: action.project.clips.map((c) => ({ ...c })),
+          captions: action.project.captions.map((c) => ({ ...c })),
+          proposals: action.project.proposals.map((p) => ({ ...p })),
+        },
+        future: [],
+      };
     case 'split-clip': {
       if (!Number.isFinite(action.at)) return state;
       const clips: Clip[] = [];
