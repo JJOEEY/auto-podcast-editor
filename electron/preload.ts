@@ -6,6 +6,7 @@ import type { Project } from '../core/types.js';
 contextBridge.exposeInMainWorld('api', {
   openVideo: () => ipcRenderer.invoke('dialog:open-video'),
   openModel: () => ipcRenderer.invoke('dialog:open-model'),
+  defaultModel: () => ipcRenderer.invoke('model:default') as Promise<string | null>,
   openDirectory: () => ipcRenderer.invoke('dialog:open-directory'),
   openSfx: () => ipcRenderer.invoke('dialog:open-sfx'),
   listSfx: () => ipcRenderer.invoke('sfx:list') as Promise<SfxAsset[]>,

@@ -11,6 +11,7 @@ interface JobProgress {
 interface DesktopApi {
   openVideo(): Promise<string | null>;
   openModel(): Promise<string | null>;
+  defaultModel(): Promise<string | null>;
   openDirectory(): Promise<string | null>;
   openSfx(): Promise<string | null>;
   listSfx(): Promise<SfxAsset[]>;

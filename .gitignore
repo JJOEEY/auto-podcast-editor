@@ -3,6 +3,7 @@ out/
 dist/
 release/
 assets/bin/
+assets/models/*.bin
 *.log
 .DS_Store
 

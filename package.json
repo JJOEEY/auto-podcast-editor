@@ -28,7 +28,8 @@
       "src/remotion/**/*"
     ],
     "extraResources": [
-      { "from": "assets/bin", "to": "bin" }
+      { "from": "assets/bin", "to": "bin" },
+      { "from": "assets/models", "to": "models" }
     ],
     "asar": true,
     "win": {

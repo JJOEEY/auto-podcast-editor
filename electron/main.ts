@@ -30,6 +30,13 @@ function runtimeBinary(name: string): string {
   return name;
 }
 
+function defaultModelPath(): string | null {
+  const packaged = join(process.resourcesPath, 'models', 'ggml-base.bin');
+  const local = join(app.getAppPath(), 'assets', 'models', 'ggml-base.bin');
+  if (app.isPackaged && existsSync(packaged)) return packaged;
+  return existsSync(local) ? local : null;
+}
+
 queue.onEvent((e) => {
   if (e.type === 'progress') win?.webContents.send('job:progress', { name: e.name, fraction: e.fraction });
 });
@@ -66,6 +73,8 @@ ipcMain.handle('dialog:open-model', async () => {
   });
   return result.canceled ? null : result.filePaths[0];
 });
+
+ipcMain.handle('model:default', () => defaultModelPath());
 
 ipcMain.handle('dialog:open-directory', async () => {
   const result = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });

@@ -72,7 +72,7 @@ export function App(): JSX.Element {
       setStatus('Hãy import video trước.');
       return;
     }
-    let selectedModel = modelPath;
+    let selectedModel = modelPath || (await window.api.defaultModel()) || '';
     if (!selectedModel) {
       selectedModel = (await window.api.openModel()) || '';
       if (!selectedModel) return;
