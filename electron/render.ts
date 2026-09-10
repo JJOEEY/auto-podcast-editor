@@ -48,6 +48,6 @@ export function checkSpawn(cmd: string, result: SpawnResult): void {
   if (result.status !== 0) throw new Error(`${cmd} exited with code ${String(result.status)}`);
 }
 
-export function compIdForPreset(preset: 'vertical' | 'horizontal'): string {
+export function compIdForPreset(preset: 'vertical' | 'horizontal'): 'PodcastVertical' | 'PodcastHorizontal' {
   return preset === 'vertical' ? 'PodcastVertical' : 'PodcastHorizontal';
 }

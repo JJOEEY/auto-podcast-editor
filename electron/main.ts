@@ -15,7 +15,8 @@ import type { Project } from '../core/types.js';
 import { compressTimeline } from '../core/compressedTimeline.js';
 import { spawnAsync } from './spawnAsync.js';
 import { assertMeaningfulPath } from './paths.js';
-import { buildRemotionRenderArgs, checkSpawn, compIdForPreset } from './render.js';
+import { checkSpawn, compIdForPreset } from './render.js';
+import { renderRemotion } from './remotionRenderer.js';
 
 const queue = new JobQueue();
 let win: BrowserWindow | null = null;
@@ -124,21 +125,27 @@ ipcMain.handle('job:render', (_e, project: Project, request: ExportRequest) => {
     const propsPath = join(app.getPath('userData'), 'jobs', `${safeName}-props.json`);
     await mkdir(join(app.getPath('userData'), 'jobs'), { recursive: true });
     const burnCaptions = request.captions === 'burn' || request.captions === 'both';
-    await writePropsFile(propsPath, buildRenderProps(project.sourcePath, project.clips, burnCaptions ? project.captions : [], project.sfx ?? [], project.subtitleStyle ?? 'karaoke'));
+    const renderProps = buildRenderProps(project.sourcePath, project.clips, burnCaptions ? project.captions : [], project.sfx ?? [], project.subtitleStyle ?? 'karaoke');
+    await writePropsFile(propsPath, renderProps);
     const compId = compIdForPreset(project.preset);
     const scale = request.quality === '720p' ? 2 / 3 : request.quality === '2k' ? 4 / 3 : request.quality === '4k' ? 2 : 1;
     const isAudio = request.target === 'audio';
     const renderPath = isAudio ? join(app.getPath('userData'), 'jobs', `${safeName}-intermediate.mp4`) : mediaPath;
     const bitrate = request.bitrateMode === 'custom' && request.customMbps ? `${request.customMbps}M` : undefined;
-    const render = spawnAsync('npx', buildRemotionRenderArgs(compId, renderPath, propsPath, {
-      format: isAudio ? 'mp4-h264' : request.format,
+    const codec = isAudio ? 'h264' : request.format === 'mp4-hevc' ? 'h265' : request.format === 'webm-vp9' ? 'vp9' : request.format === 'mov-prores' ? 'prores' : 'h264';
+    await renderRemotion({
+      appRoot: app.getAppPath(),
+      compId,
+      props: renderProps,
+      outputPath: renderPath,
+      codec,
       scale,
-      videoBitrate: bitrate,
       muted: request.target === 'video-mute',
-      audioCodec: request.format === 'webm-vp9' ? 'opus' : request.format === 'mov-prores' ? 'pcm-s16le' : 'aac',
-    }), { onLine: () => ctx.report(Math.min(0.8, 0.1 + ctxProgressPulse())) });
-    ctx.onKill(render.kill);
-    checkSpawn('remotion', { status: await render.done });
+      videoBitrate: bitrate,
+      audioCodec: request.format === 'webm-vp9' ? 'opus' : request.format === 'mov-prores' ? 'pcm-16' : 'aac',
+      onProgress: (fraction) => ctx.report(0.1 + fraction * 0.7),
+      onKill: ctx.onKill,
+    });
     ctx.report(0.8);
 
     if (isAudio) {
@@ -186,12 +193,6 @@ ipcMain.handle('job:render', (_e, project: Project, request: ExportRequest) => {
     return { media: mediaPath, srt: request.captions === 'srt' || request.captions === 'both' ? srtPath : null, caption: captionPath, thumb: isAudio ? null : thumbPath };
   });
 });
-
-let pulse = 0;
-function ctxProgressPulse(): number {
-  pulse = (pulse + 0.05) % 0.65;
-  return pulse;
-}
 
 async function assertOutput(filePath: string): Promise<void> {
   try {
