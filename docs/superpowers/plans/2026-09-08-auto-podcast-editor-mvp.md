@@ -2912,6 +2912,98 @@ git commit -m "feat: render outputs, job IPC wiring, sample pipeline test"
 
 ---
 
+### Task 16b: Callable + honest IPC (follow-up — REQUIRED before calling MVP done)
+
+Task 16 quality review found two small load-bearing defects: (1) preload sends 1 arg, main expects 3 → both handlers uncallable; (2) `spawnSync` exit codes discarded → handlers report success for failed jobs. Fix both now. The bigger wiring (props writer, 4-output materialization, async spawn, cancel channel) is P1 below — do NOT attempt here.
+
+**Files:**
+- Modify: `electron/preload.ts` (full-arg forwarding)
+- Modify: `electron/main.ts` (status checks + merged media import)
+- Modify: `electron/render.ts` (export checkSpawn helper)
+- Modify: `tests/render.test.ts` (helper tests)
+
+- [ ] **Step 1: Add tests** (append to tests/render.test.ts; extend its `../electron/render.js` import with `checkSpawn`):
+
+```ts
+describe('checkSpawn', () => {
+  it('passes on status 0', () => {
+    expect(() => checkSpawn('ffmpeg', { status: 0 })).not.toThrow();
+  });
+
+  it('throws on spawn error and non-zero exit', () => {
+    expect(() => checkSpawn('ffmpeg', { status: null, error: new Error('ENOENT') })).toThrow('ENOENT');
+    expect(() => checkSpawn('ffmpeg', { status: 1 })).toThrow('ffmpeg exited with code 1');
+  });
+});
+```
+
+- [ ] **Step 2: Run to verify failures**
+
+Run: `npx vitest run tests/render.test.ts`
+Expected: FAIL (no checkSpawn export).
+
+- [ ] **Step 3: Implement**
+
+`electron/render.ts` — append:
+
+```ts
+export interface SpawnResult {
+  status: number | null;
+  error?: Error;
+}
+
+export function checkSpawn(cmd: string, result: SpawnResult): void {
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(`${cmd} exited with code ${String(result.status)}`);
+}
+```
+
+`electron/preload.ts` — forward full args:
+
+```ts
+import { contextBridge, ipcRenderer } from 'electron';
+
+contextBridge.exposeInMainWorld('api', {
+  probe: (filePath: string) => ipcRenderer.invoke('media:probe', filePath),
+  transcribe: (filePath: string, workDir: string, modelPath: string) =>
+    ipcRenderer.invoke('ai:transcribe', filePath, workDir, modelPath),
+  render: (projectPath: string, preset: 'vertical' | 'horizontal', propsPath: string) =>
+    ipcRenderer.invoke('job:render', projectPath, preset, propsPath),
+});
+```
+
+`electron/main.ts` — merge the duplicate media import into `import { buildAudioExtractArgs, runFfprobe } from './media.js';`, import `checkSpawn`, and check every spawn:
+
+```ts
+const ffmpeg = spawnSync('ffmpeg', buildAudioExtractArgs(filePath, wav), { stdio: 'ignore' });
+checkSpawn('ffmpeg', ffmpeg);
+...
+const whisper = spawnSync('whisper-cli', buildWhisperArgs(modelPath, wav, outBase), { stdio: 'ignore' });
+checkSpawn('whisper-cli', whisper);
+...
+const rendered = spawnSync('npx', buildRemotionRenderArgs('PodcastVertical', out.mp4, propsPath), { stdio: 'inherit' });
+checkSpawn('remotion', rendered);
+```
+
+Change nothing else (no props writer, no 4-output materialization, no async spawn — all P1).
+
+- [ ] **Step 4: Verify** — render tests PASS (5), `npm run typecheck` passes, full suite no regressions.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add electron/preload.ts electron/main.ts electron/render.ts tests/render.test.ts
+git commit -m "fix: callable IPC arities, fail loudly on spawn errors"
+```
+
+---
+
+## P1 backlog (explicitly NOT MVP — filed from Task 16 quality review)
+
+In order: (a) props-JSON writer + wire App → transcribe → render end-to-end; (b) materialize all four render outputs (load project → buildSrt→.srt, hashtags→caption.txt, ffmpeg thumb, compId by preset) and assert existence before returning; (c) async spawn + progress IPC + cancellable jobs (main thread freezes for minutes today); (d) cancel channel + reset-on-new-run; (e) transcribe input validation + `join()` paths (Windows); (f) trim-quantization unification, Readonly defaults, 9b reset-guard tests (filed earlier).
+
+---
+
 ## Out of scope for this plan (follow-up plans)
 
 - P1: auto SFX/transition, progressive chunk reveal UI, horizontal preset, Undo batch across polish, WaveformView/CutProposals/Preview/SettingsPanel full components.
