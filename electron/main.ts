@@ -4,7 +4,7 @@ import { JobQueue } from './jobs.js';
 import { spawnSync } from 'node:child_process';
 import { buildAudioExtractArgs, runFfprobe } from './media.js';
 import { buildWhisperArgs, whisperJsonPath } from './whisper.js';
-import { buildRemotionRenderArgs, buildRenderOutputs, checkSpawn } from './render.js';
+import { buildRemotionRenderArgs, buildRenderOutputs, checkSpawn, compIdForPreset } from './render.js';
 
 const queue = new JobQueue();
 
@@ -15,7 +15,11 @@ async function createWindow(): Promise<void> {
 
 ipcMain.handle('media:probe', (_e, filePath: string) =>
   queue.enqueue('probe', async () =>
-    runFfprobe(filePath, (cmd, args) => ({ stdout: spawnSync(cmd, args, { encoding: 'utf8' }).stdout as string })),
+    runFfprobe(filePath, (cmd, args) => {
+      const r = spawnSync(cmd, args, { encoding: 'utf8' });
+      checkSpawn(cmd, r);
+      return { stdout: r.stdout as string };
+    }),
   ),
 );
 
@@ -34,7 +38,8 @@ ipcMain.handle('ai:transcribe', (_e, filePath: string, workDir: string, modelPat
 ipcMain.handle('job:render', (_e, projectPath: string, preset: 'vertical' | 'horizontal', propsPath: string) =>
   queue.enqueue('render', async () => {
     const out = buildRenderOutputs(projectPath, preset);
-    const rendered = spawnSync('npx', buildRemotionRenderArgs('PodcastVertical', out.mp4, propsPath), { stdio: 'inherit' });
+    const compId = compIdForPreset(preset);
+    const rendered = spawnSync('npx', buildRemotionRenderArgs(compId, out.mp4, propsPath), { stdio: 'inherit' });
     checkSpawn('remotion', rendered);
     return out;
   }),

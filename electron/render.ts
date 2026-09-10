@@ -26,3 +26,8 @@ export function checkSpawn(cmd: string, result: SpawnResult): void {
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`${cmd} exited with code ${String(result.status)}`);
 }
+
+export function compIdForPreset(preset: 'vertical' | 'horizontal'): string {
+  if (preset !== 'vertical') throw new Error(`preset not yet implemented: ${preset}`);
+  return 'PodcastVertical';
+}
