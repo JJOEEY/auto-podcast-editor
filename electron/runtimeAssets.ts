@@ -128,14 +128,28 @@ interface RemoteDownload {
   destination: string;
 }
 
-async function downloadRemoteFile(download: RemoteDownload, baseUrl: string, onProgress: (completedBytes: number, totalBytes: number) => void): Promise<string> {
+async function downloadRemoteFile(download: RemoteDownload, baseUrl: string, onProgress: (completedBytes: number, totalBytes: number) => void, allowRangeRestart = true): Promise<string> {
   const destination = download.destination;
   const tempPath = `${destination}.part`;
   await mkdir(dirname(destination), { recursive: true });
   let downloaded = 0;
   try { downloaded = (await stat(tempPath)).size; } catch { downloaded = 0; }
+  if (downloaded >= download.bytes) {
+    if (downloaded === download.bytes && (await sha256File(tempPath)) === download.sha256.toLowerCase()) {
+      await rm(destination, { force: true });
+      await rename(tempPath, destination);
+      onProgress(download.bytes, download.bytes);
+      return destination;
+    }
+    await rm(tempPath, { force: true });
+    downloaded = 0;
+  }
   const headers: Record<string, string> = downloaded > 0 ? { Range: `bytes=${downloaded}-` } : {};
   const response = await fetch(new URL(download.remotePath.replace(/^[/\\]+/, ''), `${baseUrl.trim().replace(/[/\\]+$/, '')}/`), { headers, redirect: 'follow' });
+  if (response.status === 416 && downloaded > 0 && allowRangeRestart) {
+    await rm(tempPath, { force: true });
+    return downloadRemoteFile(download, baseUrl, onProgress, false);
+  }
   if (!response.ok && response.status !== 206) throw new Error(`Tải ${download.label} thất bại: HTTP ${response.status}`);
   const append = downloaded > 0 && response.status === 206;
   if (!append) downloaded = 0;
@@ -150,6 +164,7 @@ async function downloadRemoteFile(download: RemoteDownload, baseUrl: string, onP
   await pipeline(stream, (await import('node:fs')).createWriteStream(tempPath, { flags: append ? 'a' : 'w' }));
   if ((await stat(tempPath)).size !== download.bytes) throw new Error(`Kích thước ${download.label} không khớp manifest`);
   if ((await sha256File(tempPath)) !== download.sha256.toLowerCase()) throw new Error(`SHA-256 ${download.label} không khớp manifest`);
+  await rm(destination, { force: true });
   await rename(tempPath, destination);
   return destination;
 }

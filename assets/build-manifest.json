@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "version": "0.1.1",
-  "buildId": "4a08236f258f617198d02525",
-  "generatedAt": "2026-09-11T13:48:33.538Z",
+  "buildId": "53a066eea552623e2d8d4789",
+  "generatedAt": "2026-09-11T17:43:20.639Z",
   "files": [
     {
       "path": "assets/bin/ffmpeg.exe",
@@ -346,8 +346,8 @@
     },
     {
       "path": "assets/build-manifest.json",
-      "sha256": "fda95493304ffde8b9c3753cc6a29b37fc3966f48fa251cfbbc7e26e1808cec8",
-      "bytes": 78825
+      "sha256": "dbfbed3994cd219f970c25d890f7246c72a100e1f2fec3ee429b9f5478b3a5ad",
+      "bytes": 78826
     },
     {
       "path": "assets/codec-smoke-report.json",
@@ -2126,8 +2126,8 @@
     },
     {
       "path": "electron/runtimeAssets.ts",
-      "sha256": "f04d3fc9ee3669be8c35863fff4105c4fd32c501ff77a2c02972790e590319fe",
-      "bytes": 11956
+      "sha256": "3712a61a260f89bd5090d293db3de9438ec15af038e6b7fc37c7fb884cdddda1",
+      "bytes": 12591
     },
     {
       "path": "electron/sfxLibrary.ts",
