@@ -388,3 +388,13 @@ Project hiện là vertical slice nâng cao, đã có nhiều backend thật và
 - Lỗi phát hiện/xử lý: GitHub Release không nhận model Qwen nguyên file do giới hạn từng asset; xử lý bằng split-file thay vì đưa model vào git.
 - Còn thiếu/blocker: Block 1 benchmark/ground truth vẫn deferred; performance chính thức trên bản cài; clean-install/update/rollback/offline acceptance và acceptance 5 track dài; certificate `excluded-by-user`.
 - Trạng thái: source và product candidate online installer đã có trên GitHub; chưa gọi production-ready.
+
+### 2026-09-12 — Mốc Z: sửa lỗi HTTP 416 khi tải runtime
+- Lỗi người dùng báo: Runtime Setup dừng với `Error invoking remote method 'runtime:download'` và HTTP 416.
+- Nguyên nhân: `.part` đã đủ kích thước nhưng downloader vẫn gửi Range vượt cuối file; GitHub trả `416 Range Not Satisfiable`.
+- Đã sửa `electron/runtimeAssets.ts`: nhận file đã đủ sau khi kiểm SHA-256; Range 416 hoặc part sai thì tự xóa part và tải lại; rename file đích an toàn.
+- Đã build installer local mới tại `release-github-fix/Auto Podcast Editor-Setup-0.1.1.exe`, SHA-256 `ba888aaaa19a44cce148bbfe561229bc7e48d2ed8d2a7bb075d6fd0638fdadeb`.
+- Đã thay installer trên GitHub Release `v0.1.1-online`; digest remote khớp local và URL trả HTTP 200.
+- Đã test: typecheck pass; 45 file/191 test pass; NSIS build pass; launcher bản mới sống 8 giây.
+- Khi cập nhật: cài đè installer mới; runtime đã tải đủ được giữ lại, không tải lại.
+- Còn thiếu/blocker giữ nguyên: benchmark Block 1/ground truth, performance chính thức trên bản cài, clean-install/update/rollback/offline acceptance và acceptance 5 track dài.

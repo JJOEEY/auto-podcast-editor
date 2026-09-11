@@ -157,3 +157,13 @@ Ngày kiểm tra: 2026-09-11
 - `RUNTIME_ASSET_BASE_URL` trong manifest bàn giao trỏ tới release này; 7 URL runtime/installer đã kiểm tra HTTP 200.
 - Đã test: typecheck pass; 45 test files/191 tests pass; runtime split/hash pass; Electron Builder NSIS pass; release assets uploaded/verified.
 - Trạng thái: source và candidate online installer đã bàn giao trên GitHub; chưa gọi production-ready vì Block 1, performance chính thức, clean-install/update/rollback và acceptance dài vẫn còn. Certificate vẫn `excluded-by-user`.
+
+### 2026-09-12 — Mốc Z: sửa lỗi tải runtime HTTP 416
+
+- Lỗi người dùng gặp: Runtime Setup báo `Error invoking remote method 'runtime:download'`, HTTP 416.
+- Nguyên nhân: file `.part` đã đủ kích thước nhưng downloader vẫn gửi Range bắt đầu sau byte cuối; GitHub trả `416 Range Not Satisfiable`.
+- Đã sửa `electron/runtimeAssets.ts`: nếu `.part` đã đủ kích thước thì kiểm tra SHA-256 và nhận luôn; nếu part sai hoặc Range bị 416 thì xóa part hỏng và tải lại từ đầu; trước khi rename sẽ thay file đích cũ an toàn.
+- Đã build installer local mới: `release-github-fix/Auto Podcast Editor-Setup-0.1.1.exe`, SHA-256 `ba888aaaa19a44cce148bbfe561229bc7e48d2ed8d2a7bb075d6fd0638fdadeb`.
+- Đã thay installer trên GitHub Release `v0.1.1-online`; remote digest và kích thước khớp local, URL trả HTTP 200.
+- Đã test: typecheck pass; 45 test files/191 tests pass; Electron Builder NSIS pass; launcher bản mới sống ít nhất 8 giây.
+- Cách dùng: cài đè installer mới; runtime đã tải đủ sẽ được giữ lại, không cần tải lại.
