@@ -374,3 +374,17 @@ Project hiện là vertical slice nâng cao, đã có nhiều backend thật và
 - Đã test: typecheck pass; 45 test files/190 tests pass; `npm run dist` pass; Electron Builder NSIS pass.
 - Artifact: `release-online-preview/Auto Podcast Editor-Setup-0.1.1.exe`, 115,412,523 bytes; app.asar có `assets/runtime-manifest.json` và không chứa model/FFmpeg lớn.
 - Còn thiếu: cần upload `runtime-payload` lên CDN/máy chủ HTTPS thật rồi build với `RUNTIME_ASSET_BASE_URL`; chưa gọi installer online production-ready khi chưa có endpoint đó.
+
+### 2026-09-11 — Mốc Y: source và online installer trên GitHub
+- Mục tiêu: đẩy source lên GitHub và lưu installer/runtime để tải dần.
+- Đã tạo repo public: `https://github.com/JJOEEY/auto-podcast-editor`.
+- Đã push source và tài liệu trên `main`; commit bàn giao gần nhất `0728435`.
+- Đã cập nhật `.gitignore` để không đưa video, QA output, cache, build tạm, browser/model lớn và runtime payload sinh tự động vào repo.
+- Đã thêm split runtime cho model Qwen: 2 parts, mỗi part có SHA-256, tải resume và ghép kiểm tra hash toàn file.
+- Đã build online installer version `0.1.1`, buildId `4a08236f258f617198d02525`, SHA-256 installer `5af93ca370dc739c6c5a9c59a232c1cef380bb9f6d5efb728206586c3e34aba4`.
+- Đã tạo GitHub prerelease `https://github.com/JJOEEY/auto-podcast-editor/releases/tag/v0.1.1-online` và upload đủ installer, core runtime, Whisper base, Remotion browser, SFX và 2 Qwen parts.
+- `assets/runtime-manifest.json` đã trỏ tới GitHub Release; 7 URL asset trả HTTP 200; digest GitHub khớp hash local.
+- Đã test: `npm run typecheck` pass; `npm test -- --run` pass 45 file/191 test; split/hash pass; Electron Builder NSIS pass; release upload pass.
+- Lỗi phát hiện/xử lý: GitHub Release không nhận model Qwen nguyên file do giới hạn từng asset; xử lý bằng split-file thay vì đưa model vào git.
+- Còn thiếu/blocker: Block 1 benchmark/ground truth vẫn deferred; performance chính thức trên bản cài; clean-install/update/rollback/offline acceptance và acceptance 5 track dài; certificate `excluded-by-user`.
+- Trạng thái: source và product candidate online installer đã có trên GitHub; chưa gọi production-ready.

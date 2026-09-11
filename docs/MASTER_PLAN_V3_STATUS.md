@@ -145,3 +145,15 @@ Ngày kiểm tra: 2026-09-11
 - Installer thử nghiệm đã build bằng Electron Builder NSIS: `release-online-preview/Auto Podcast Editor-Setup-0.1.1.exe`, kích thước 115,412,523 bytes. App.asar có runtime manifest nhưng không chứa FFmpeg/model lớn.
 - Đã test: typecheck pass; 45 test files/190 tests pass; dist pass; NSIS thin installer pass; xác nhận model/FFmpeg không nằm trong app.asar.
 - Blocker còn lại: chưa có máy chủ/CDN HTTPS của sản phẩm để upload `runtime-payload` và đặt `RUNTIME_ASSET_BASE_URL`; vì vậy `release-online-preview` là build cấu trúc, chưa phải bản online bàn giao cho máy khác.
+
+### 2026-09-11 — Mốc Y: source và online installer trên GitHub
+
+- Đã tạo repository public: `https://github.com/JJOEEY/auto-podcast-editor`.
+- Đã push source/documentation trên branch `main`; commit bàn giao gần nhất `0728435`.
+- Đã loại khỏi repository video, QA output, cache, build tạm, model/browser lớn và runtime payload sinh tự động.
+- Đã thêm hỗ trợ `split-file`: model Qwen tách thành 2 phần, tải resume và ghép lại sau khi kiểm tra SHA-256 từng phần và toàn file.
+- Đã build installer online version `0.1.1`, buildId `4a08236f258f617198d02525`, SHA-256 `5af93ca370dc739c6c5a9c59a232c1cef380bb9f6d5efb728206586c3e34aba4`.
+- Đã tạo prerelease và upload đủ 7 artifact tại `https://github.com/JJOEEY/auto-podcast-editor/releases/tag/v0.1.1-online`; digest GitHub khớp hash local.
+- `RUNTIME_ASSET_BASE_URL` trong manifest bàn giao trỏ tới release này; 7 URL runtime/installer đã kiểm tra HTTP 200.
+- Đã test: typecheck pass; 45 test files/191 tests pass; runtime split/hash pass; Electron Builder NSIS pass; release assets uploaded/verified.
+- Trạng thái: source và candidate online installer đã bàn giao trên GitHub; chưa gọi production-ready vì Block 1, performance chính thức, clean-install/update/rollback và acceptance dài vẫn còn. Certificate vẫn `excluded-by-user`.
