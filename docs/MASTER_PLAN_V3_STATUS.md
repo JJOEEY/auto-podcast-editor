@@ -179,3 +179,4 @@ Ngày kiểm tra: 2026-09-11
 - `deferred-by-user`: Block 1 Whisper benchmark chất lượng và ground truth.
 - `excluded-by-user`: Authenticode certificate.
 - Kết luận: bản 0.1.2 đã sửa đúng các lỗi khởi động/import/UI được yêu cầu và đủ để người dùng cài thử; chưa gọi toàn bộ sản phẩm production-ready.
+- GitHub prerelease: `https://github.com/JJOEEY/auto-podcast-editor/releases/tag/v0.1.2`; installer và blockmap đã upload, bản cũ vẫn giữ nguyên.
