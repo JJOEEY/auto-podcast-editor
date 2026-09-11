@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "version": "0.1.1",
-  "buildId": "f17c03e6c83b9db3537bd647",
-  "generatedAt": "2026-09-11T13:31:18.687Z",
+  "buildId": "4a08236f258f617198d02525",
+  "generatedAt": "2026-09-11T13:48:33.538Z",
   "files": [
     {
       "path": "assets/bin/ffmpeg.exe",
@@ -346,8 +346,8 @@
     },
     {
       "path": "assets/build-manifest.json",
-      "sha256": "f0583ec3a1c8f06e07042030d7d06ab8b87453e2686c1ded747620f8d452ff86",
-      "bytes": 78180
+      "sha256": "fda95493304ffde8b9c3753cc6a29b37fc3966f48fa251cfbbc7e26e1808cec8",
+      "bytes": 78825
     },
     {
       "path": "assets/codec-smoke-report.json",
@@ -1841,8 +1841,8 @@
     },
     {
       "path": "assets/runtime-manifest.json",
-      "sha256": "f573328120e14ed8c48803e2e1319680208558b0958df62871781b0c812f8672",
-      "bytes": 1824
+      "sha256": "e313fa97e4de6efe73bf0d37f5c33190eea0ad179fc08a40cf92ba2dc7757e64",
+      "bytes": 2252
     },
     {
       "path": "assets/sfx/bundled/click.wav",
@@ -2011,8 +2011,8 @@
     },
     {
       "path": "core/runtimeAssets.ts",
-      "sha256": "c31d2e2a613445faf04aeccd4f501c9c53e8b2852c102f39da1654135db0d013",
-      "bytes": 2959
+      "sha256": "7b1b7774af013e94231d80dff30980e14f431585ded6ccd217bcd48497049603",
+      "bytes": 3920
     },
     {
       "path": "core/safezone.ts",
@@ -2126,8 +2126,8 @@
     },
     {
       "path": "electron/runtimeAssets.ts",
-      "sha256": "ca75efd183f6246d5a63def9d5316aec05346075af3e0f96685e3988e8efa4a4",
-      "bytes": 9458
+      "sha256": "f04d3fc9ee3669be8c35863fff4105c4fd32c501ff77a2c02972790e590319fe",
+      "bytes": 11956
     },
     {
       "path": "electron/sfxLibrary.ts",
@@ -2151,8 +2151,8 @@
     },
     {
       "path": "package.json",
-      "sha256": "4341c881ccda60774de3337aeb4f618f96c1874bc2f579ef8f0ab721aa0e0e46",
-      "bytes": 3522
+      "sha256": "e07336b6d11a1ee01825f09dd85bcecab70bbc74acdce5dbab4ca373ceccb973",
+      "bytes": 3608
     },
     {
       "path": "src/App.tsx",

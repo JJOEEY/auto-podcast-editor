@@ -4,10 +4,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 if ([string]::IsNullOrWhiteSpace($env:RUNTIME_ASSET_BASE_URL)) {
-  throw 'Thiếu biến RUNTIME_ASSET_BASE_URL. Hãy trỏ tới thư mục runtime đã upload qua HTTPS trước khi build installer online.'
+  throw 'Missing RUNTIME_ASSET_BASE_URL. Configure the HTTPS runtime asset location before building the online installer.'
 }
 if (-not $env:RUNTIME_ASSET_BASE_URL.StartsWith('https://')) {
-  throw 'RUNTIME_ASSET_BASE_URL phải dùng HTTPS.'
+  throw 'RUNTIME_ASSET_BASE_URL must use HTTPS.'
 }
 
 $root = Split-Path -Parent $PSScriptRoot
