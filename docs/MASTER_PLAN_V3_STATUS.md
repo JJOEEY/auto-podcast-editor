@@ -167,3 +167,15 @@ Ngày kiểm tra: 2026-09-11
 - Đã thay installer trên GitHub Release `v0.1.1-online`; remote digest và kích thước khớp local, URL trả HTTP 200.
 - Đã test: typecheck pass; 45 test files/191 tests pass; Electron Builder NSIS pass; launcher bản mới sống ít nhất 8 giây.
 - Cách dùng: cài đè installer mới; runtime đã tải đủ sẽ được giữ lại, không cần tải lại.
+
+### 2026-09-12 — Mốc AA: khởi động, import và UX kho nguồn
+
+- `passed`: typecheck; 45 test files/193 tests; renderer build; NSIS installer build 0.1.2; kiểm tra app.asar có React/ReactDOM/Remotion; launcher source và launcher bản cài sống tối thiểu 8 giây.
+- Đã thay RuntimeSetup thành màn hình riêng, generic và chặn editor cho đến khi `runtimeReport.ready === true`; lỗi kỹ thuật chỉ giữ trong log/backend, không lộ danh sách runtime trên UI.
+- Đã thêm kho nguồn: chọn nhiều file, kéo-thả, video/audio/image, tìm kiếm/lọc, preview thumbnail, dedupe, insert vào timeline, xóa nguồn chỉ khi không còn clip tham chiếu.
+- Đã sửa liên kết media: `MediaAsset` + `assetId`/`sourceIn`; preview và export map đúng file theo từng clip; audio item chạy độc lập trên track A2; timeline duration không cắt audio nằm sau video.
+- Artifact bàn giao nội bộ: `release/Auto Podcast Editor-Setup-0.1.2.exe`, buildId `691aa53e260163fbf0077dd4`, SHA-256 `FADD56462D2A70C6429AC4B6E9548C54D9412A2EEE4896CF0FE592EAF4D1B080`, QA path `qa/product-candidate/installed-0.1.2`.
+- `blocked`: chưa có manual E2E evidence trên cả C0012 và hai DJI; chưa có performance gate chính thức trên bản cài; chưa clean-install/update/rollback/offline acceptance dài; chưa acceptance 5 track dài.
+- `deferred-by-user`: Block 1 Whisper benchmark chất lượng và ground truth.
+- `excluded-by-user`: Authenticode certificate.
+- Kết luận: bản 0.1.2 đã sửa đúng các lỗi khởi động/import/UI được yêu cầu và đủ để người dùng cài thử; chưa gọi toàn bộ sản phẩm production-ready.

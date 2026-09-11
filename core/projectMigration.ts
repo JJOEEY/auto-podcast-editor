@@ -73,13 +73,13 @@ function buildTimelineItems(project: Project, fps: number): TimelineItem[] {
     return {
       id: clip.id,
       trackId: clip.track,
-      assetId: 'source-asset',
+      assetId: clip.assetId ?? 'source-asset',
       label: clip.label,
       startFrame,
       durationFrames: endFrame - startFrame,
       source: {
-        sourceIn: clip.start,
-        sourceOut: clip.end,
+        sourceIn: clip.sourceIn ?? clip.start,
+        sourceOut: (clip.sourceIn ?? clip.start) + clip.end - clip.start,
         handleBeforeFrames: Math.min(requiredHandle, startFrame),
         handleAfterFrames: Math.min(requiredHandle, Math.max(0, Math.round(project.durationSec * fps) - endFrame)),
       },

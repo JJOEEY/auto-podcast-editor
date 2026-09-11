@@ -7,6 +7,7 @@ export interface Timebase { fpsNum: number; fpsDen: number; }
 export type MediaKind = 'video' | 'audio' | 'image';
 
 export interface MediaAsset {
+  thumbnailUrl?: string;
   id: string;
   path: string;
   kind: MediaKind;
@@ -112,6 +113,8 @@ export interface SfxClip {
 }
 
 export interface Clip {
+  assetId?: string;
+  sourceIn?: number;
   id: string;
   track: 'V1' | 'A1' | 'A2' | 'CC';
   start: number;

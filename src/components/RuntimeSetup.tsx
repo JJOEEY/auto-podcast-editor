@@ -29,32 +29,25 @@ function formatBytes(bytes: number): string {
 }
 
 export function RuntimeSetup({ report, progress, busy, onDownload }: RuntimeSetupProps): JSX.Element | null {
-  if (!report || report.ready) return null;
+  if (report?.ready) return null;
+  if (!report) return <main className="setup-screen"><div className="setup-card"><h1>Đang kiểm tra thư viện</h1><p>Ứng dụng đang chuẩn bị không gian làm việc.</p><button onClick={onDownload} disabled={busy}>Kiểm tra lại</button></div></main>;
   const missing = report.assets.filter((asset) => !asset.ready);
   const requiredMissing = missing.filter((asset) => asset.required);
   const progressPercent = progress ? Math.round(progress.overallFraction * 100) : 0;
   return (
-    <section className="runtime-setup panel-card">
+    <main className="setup-screen"><section className="setup-card">
       <div className="panel-header">
         <div>
-          <h2>Thiết lập lần đầu</h2>
-          <p className="panel-subtitle">Tải thành phần cần thiết sau khi cài app</p>
+          <h1>Cần cập nhật thư viện để bắt đầu</h1>
+          <p className="panel-subtitle">Chỉ cần chuẩn bị một lần. Sau đó bạn có thể làm việc khi không có mạng.</p>
         </div>
-        <span className="badge badge-warn">{requiredMissing.length} còn thiếu</span>
+        <span>{formatBytes(requiredMissing.reduce((sum, asset) => sum + asset.bytes, 0))}</span>
       </div>
-      <div className="runtime-asset-list">
-        {missing.map((asset) => (
-          <div className="runtime-asset-row" key={asset.id}>
-            <span>{asset.label}</span>
-            <small>{formatBytes(asset.bytes)}{asset.required ? ' · bắt buộc' : ' · tuỳ chọn'}</small>
-          </div>
-        ))}
-      </div>
-      {!report.baseUrlConfigured && <p className="runtime-error">Chưa cấu hình nguồn tải runtime cho bản phát hành này.</p>}
-      {progress && <div className="runtime-progress"><span style={{ width: `${progressPercent}%` }} /><small>{progress.label} · {progress.state === 'failed' ? progress.error : `${progressPercent}%`}</small></div>}
+      {!report.baseUrlConfigured && <p className="runtime-error">Không thể kết nối dịch vụ cập nhật. Vui lòng dùng bộ cài mới nhất.</p>}
+      {progress && <div className="runtime-progress"><progress max={100} value={progressPercent} /><small>{progress.state === 'failed' ? 'Cập nhật chưa hoàn tất. Hãy kiểm tra kết nối và thử lại.' : `${progress.state === 'extracting' ? 'Đang hoàn tất' : 'Đang chuẩn bị ứng dụng'} · ${progressPercent}%`}</small></div>}
       <button className="primary" disabled={busy || !report.baseUrlConfigured} onClick={onDownload}>
-        {busy ? 'Đang tải thành phần…' : 'Tải toàn bộ runtime'}
+        {busy ? 'Đang chuẩn bị ứng dụng…' : progress?.state === 'failed' ? 'Thử lại' : 'Cập nhật ngay'}
       </button>
-    </section>
+    </section></main>
   );
 }

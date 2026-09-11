@@ -1,8 +1,9 @@
 import { rename, writeFile } from 'node:fs/promises';
-import type { CaptionLine, Clip, SfxClip, SubtitleStyleId, Timebase, TimelineItem, Track } from './types.js';
+import type { CaptionLine, Clip, MediaAsset, SfxClip, SubtitleStyleId, Timebase, TimelineItem, Track } from './types.js';
 
 export interface RenderProps {
   sourcePath: string;
+  assets?: MediaAsset[];
   clips: Clip[];
   captions: CaptionLine[];
   sfx: SfxClip[];
@@ -27,9 +28,11 @@ export function buildRenderProps(
   items?: TimelineItem[],
   tracks?: Track[],
   timebase: Timebase = { fpsNum: 30, fpsDen: 1 },
+  assets?: MediaAsset[],
 ): RenderProps {
   return {
     sourcePath,
+    assets: assets?.map((asset) => ({ ...asset, fps: asset.fps ? { ...asset.fps } : undefined })),
     clips: clips.map((c) => ({ ...c })),
     captions: captions.map((c) => ({ ...c, words: c.words?.map((word) => ({ ...word })) })),
     sfx: sfx.map((clip) => ({ ...clip })),

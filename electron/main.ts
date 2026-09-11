@@ -288,6 +288,27 @@ ipcMain.handle('dialog:open-sfx', async () => {
   return result.canceled ? null : result.filePaths[0];
 });
 
+ipcMain.handle('dialog:open-media', async () => {
+  const result = await dialog.showOpenDialog({ properties: ['openFile', 'multiSelections'], filters: [{ name: 'Media', extensions: ['mp4','mov','mkv','webm','wav','mp3','m4a','aac','flac','ogg','opus','png','jpg','jpeg','webp'] }] });
+  return result.canceled ? [] : result.filePaths;
+});
+ipcMain.handle('media:inspect', async (_event, filePath: string) => {
+  assertMeaningfulPath(filePath, 'media source');
+  const info = await stat(filePath);
+  if (!info.isFile()) throw new Error('Nguồn không phải file.');
+  const image = ['.png','.jpg','.jpeg','.webp'].includes(extname(filePath).toLowerCase());
+  const raw = await new Promise<string>((resolve, reject) => {
+    const child = spawn(runtimeBinary('ffprobe'), ['-v','error','-show_format','-show_streams','-of','json',filePath], { windowsHide: true });
+    let output = ''; child.stdout.on('data', chunk => { output += String(chunk); });
+    child.on('error', reject); child.on('close', code => code === 0 ? resolve(output) : reject(new Error('Không đọc được nguồn.')));
+  });
+  const metadata = JSON.parse(raw);
+  const video = metadata.streams.find((stream: { codec_type: string }) => stream.codec_type === 'video');
+  const durationSec = image ? 5 : Number(metadata.format.duration);
+  if (!Number.isFinite(durationSec) || durationSec <= 0) throw new Error('Thời lượng nguồn không hợp lệ.');
+  return { id: createHash('sha256').update(filePath.toLowerCase()).digest('hex').slice(0,24), path: filePath, kind: image ? 'image' : video ? 'video' : 'audio', durationSec, width: video?.width, height: video?.height, fingerprint: `${info.size}:${info.mtimeMs}` };
+});
+
 ipcMain.handle('dialog:open-project', async () => {
   const result = await dialog.showOpenDialog({
     properties: ['openFile'],
@@ -508,6 +529,7 @@ ipcMain.handle('job:render', (_e, project: Project, request: ExportRequest) => {
       projectV2.items,
       projectV2.tracks,
       projectV2.timebase,
+      projectV2.assets,
     );
     renderProps.originalAudioVolume = voiceAudible ? dbToLinear(voiceTrack?.volumeDb) : 0;
     renderProps.durationInFrames = timelineDurationFrames({ items: projectV2.items, tracks: projectV2.tracks, clips: projectV2.clips, captions: projectV2.captions, sfx: projectV2.sfx ?? [], timebase: projectV2.timebase });

@@ -22,6 +22,7 @@ import { decorateTransitions, TRANSITION_PRESETS, transitionConfig } from '../co
 import { AudioMixer } from './components/AudioMixer.js';
 import { SfxEditor } from './components/SfxEditor.js';
 import { RuntimeSetup } from './components/RuntimeSetup.js';
+import { SourceBin } from './components/SourceBin.js';
 
 export function App(): JSX.Element {
   const [state, dispatch] = useReducer(
@@ -102,31 +103,23 @@ export function App(): JSX.Element {
     return () => window.clearInterval(interval);
   }, [projectFilePath, state.present]);
 
-  const importVideo = async (): Promise<void> => {
+  const importMedia = async (droppedPaths?: string[]): Promise<void> => {
     try {
-      const filePath = await window.api.openVideo();
-      if (!filePath) return;
-      setStatus('Đang đọc video...');
-      const durationSec = await window.api.probe(filePath);
-      const name = filePath.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, '') || 'untitled';
-      dispatch({
-        type: 'open-project',
-        project: {
-          version: 1,
-          name,
-          sourcePath: filePath,
-          durationSec,
-          clips: [{ id: 'source-1', track: 'V1', start: 0, end: durationSec, label: 'source' }],
-          proposals: [],
-          captions: [],
-          preset: 'vertical',
-          settings: createDefaultSettings(),
-          sfx: [],
-          subtitleStyle: 'karaoke',
-        },
-      });
-      setProjectFilePath(null);
-      setStatus(`Đã import: ${name} (${durationSec.toFixed(1)}s)`);
+      const paths = droppedPaths ?? await window.api.openMedia();
+      if (paths.length === 0) return;
+      setStatus(`Đang đọc ${paths.length} nguồn…`);
+      const imported = [];
+      const failed: string[] = [];
+      for (const path of paths) {
+        try {
+          imported.push(await window.api.inspectMedia(path));
+        } catch {
+          failed.push(path.split(/[\\/]/).pop() ?? path);
+        }
+      }
+      if (imported.length > 0) dispatch({ type: 'import-assets', assets: imported });
+      if (failed.length > 0) setStatus(`Đã thêm ${imported.length} nguồn; không đọc được ${failed.length} file.`);
+      else setStatus(`Đã thêm ${imported.length} nguồn vào kho.`);
     } catch (error) {
       setStatus(`Import lỗi: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -310,7 +303,11 @@ export function App(): JSX.Element {
     }
   };
 
-  const runtimeReady = runtimeReport?.ready ?? true;
+  const runtimeReady = runtimeReport?.ready ?? false;
+
+  if (!runtimeReady) {
+    return <RuntimeSetup report={runtimeReport} progress={runtimeProgress} busy={runtimeBusy} onDownload={downloadRuntime} />;
+  }
 
   return (
     <div className="app-shell">
@@ -324,7 +321,7 @@ export function App(): JSX.Element {
           <span className="status-pill">● {status}</span>
         </div>
         <nav className="topbar-actions" aria-label="Project actions">
-          <button className="primary" onClick={importVideo} disabled={busy || !runtimeReady}>＋ Import</button>
+          <button className="primary" onClick={() => void importMedia()} disabled={busy || !runtimeReady}>＋ Thêm nguồn</button>
           <button onClick={openProject} disabled={busy}>Mở</button>
           <button onClick={saveProject} disabled={busy || !state.present.sourcePath}>Lưu</button>
           <button onClick={transcribe} disabled={busy || !runtimeReady || !state.present.sourcePath}>Phân tích</button>
@@ -340,7 +337,10 @@ export function App(): JSX.Element {
       <div className="workspace">
         <aside className="left-rail">
           <div className="rail-title"><span>Bộ công cụ</span><span>⌘ K</span></div>
-          <RuntimeSetup report={runtimeReport} progress={runtimeProgress} busy={runtimeBusy} onDownload={downloadRuntime} />
+          <SourceBin assets={state.present.assets} onAdd={() => void importMedia()} onDrop={(paths) => void importMedia(paths)} onInsert={(assetId) => dispatch({ type: 'insert-asset', assetId, at: state.present.durationSec })} onRemove={(assetId) => {
+            if (state.present.clips.some((clip) => clip.assetId === assetId)) setStatus('Nguồn đang được dùng trên timeline; hãy xóa clip trước.');
+            else dispatch({ type: 'remove-asset', assetId });
+          }} />
           <div className="rail-section"><CommandPanel onPreview={previewCommands} onApply={applyCommands} preview={commandPreview} onAiPreview={aiPreviewCommands} aiBusy={aiBusy} /></div>
           <div className="rail-section"><CutProposals proposals={state.present.proposals} onApply={applySelectedProposals} /></div>
           <div className="rail-section"><SfxLibrary onAdd={(asset) => dispatch({ type: 'add-sfx', clip: makeSfxClip(asset, 0) })} /></div>
@@ -350,7 +350,7 @@ export function App(): JSX.Element {
           <section className="preview-stage">
             <div className="stage-toolbar"><strong>Preview</strong><span className="subtle">{state.present.preset === 'vertical' ? '1080 × 1920' : '1920 × 1080'} · 30 fps</span><span className="subtle">{state.present.durationSec.toFixed(2)}s</span></div>
             <div className="preview-canvas">
-              <Preview sourcePath={state.present.sourcePath} clips={state.present.clips} captions={state.present.captions} sfx={state.present.sfx} subtitleStyle={state.present.subtitleStyle} items={state.present.items} tracks={state.present.tracks} timebase={state.present.timebase} preset={state.present.preset} audioPreset={state.present.voicePreset ?? 'podcast'} audioChain={state.present.audioChains.find((chain) => chain.trackId === 'A1')} />
+              <Preview sourcePath={state.present.sourcePath} assets={state.present.assets} clips={state.present.clips} captions={state.present.captions} sfx={state.present.sfx} subtitleStyle={state.present.subtitleStyle} items={state.present.items} tracks={state.present.tracks} timebase={state.present.timebase} preset={state.present.preset} audioPreset={state.present.voicePreset ?? 'podcast'} audioChain={state.present.audioChains.find((chain) => chain.trackId === 'A1')} />
             </div>
           </section>
 

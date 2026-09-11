@@ -97,6 +97,18 @@ describe('manual timeline edits', () => {
     s = reduce(s, { type: 'undo' });
     expect(s.present.revision).toBe(before);
   });
+
+  it('imports media into the current project and inserts the selected asset without replacing the timeline', () => {
+    let s = createState({ name: 'ep', sourcePath: 'x', durationSec: 20, preset: 'vertical', settings: DEFAULT_SETTINGS });
+    s = reduce(s, { type: 'apply-auto-cuts', clips: [{ id: 'existing', track: 'V1', start: 0, end: 4, label: 'existing' }] });
+    const asset = { id: 'music-1', path: 'D:/media/music.mp3', kind: 'audio' as const, durationSec: 8 };
+    s = reduce(s, { type: 'import-assets', assets: [asset, asset] });
+    expect(s.present.assets.filter((item) => item.id === 'music-1')).toHaveLength(1);
+    s = reduce(s, { type: 'insert-asset', assetId: 'music-1', at: 4 });
+    expect(s.present.clips).toHaveLength(2);
+    expect(s.present.clips[1]).toMatchObject({ assetId: 'music-1', track: 'A2', start: 4, end: 12, sourceIn: 0 });
+    expect(s.present.clips[0].id).toBe('existing');
+  });
 });
 
 describe('reducer undo', () => {

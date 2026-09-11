@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { ExportRequest } from '../core/export.js';
 import type { SfxAsset } from '../core/sfxLibrary.js';
 import type { Project } from '../core/types.js';
@@ -8,6 +8,9 @@ import type { WaveformCache } from '../core/waveform.js';
 import type { RuntimeAssetProgress } from './runtimeAssets.js';
 
 contextBridge.exposeInMainWorld('api', {
+  openMedia: () => ipcRenderer.invoke('dialog:open-media'),
+  inspectMedia: (path: string) => ipcRenderer.invoke('media:inspect', path),
+  droppedFilePath: (file: File) => webUtils.getPathForFile(file),
   openVideo: () => ipcRenderer.invoke('dialog:open-video'),
   openModel: () => ipcRenderer.invoke('dialog:open-model'),
   defaultModel: () => ipcRenderer.invoke('model:default') as Promise<string | null>,

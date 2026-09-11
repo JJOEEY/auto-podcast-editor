@@ -45,10 +45,16 @@ export async function renderRemotion(options: ProgrammaticRenderOptions): Promis
   const cancel = makeCancelSignal();
   options.onKill?.(cancel.cancel);
   const browserExecutable = bundledBrowser(options.appRoot);
-  const assetServer = await startLocalAssetServer([options.props.sourcePath, options.props.previewAudioPath, ...(options.props.sfx ?? []).map((clip) => clip.path)].filter((path): path is string => Boolean(path)));
+  const assetServer = await startLocalAssetServer([
+    options.props.sourcePath,
+    ...(options.props.assets ?? []).map((asset) => asset.path),
+    options.props.previewAudioPath,
+    ...(options.props.sfx ?? []).map((clip) => clip.path),
+  ].filter((path): path is string => Boolean(path)));
   const renderProps: RenderProps = {
     ...options.props,
     sourcePath: assetServer.urlFor(options.props.sourcePath),
+    assets: (options.props.assets ?? []).map((asset) => ({ ...asset, path: assetServer.urlFor(asset.path) })),
     previewAudioPath: options.props.previewAudioPath ? assetServer.urlFor(options.props.previewAudioPath) : undefined,
     sfx: (options.props.sfx ?? []).map((clip) => ({ ...clip, path: assetServer.urlFor(clip.path) })),
   };

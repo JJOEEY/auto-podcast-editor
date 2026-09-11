@@ -20,4 +20,18 @@ describe('timeline duration', () => {
     });
     expect(result).toBe(390);
   });
+
+  it('keeps an audio item after the last video frame', () => {
+    const result = timelineDurationFrames({
+      items: [
+        { id: 'video', trackId: 'V1', label: 'video', startFrame: 0, durationFrames: 390 },
+        { id: 'music', trackId: 'A2', label: 'music', startFrame: 390, durationFrames: 60 },
+      ],
+      tracks: [
+        { id: 'V1', kind: 'video', name: 'Video', index: 0 },
+        { id: 'A2', kind: 'audio', name: 'Music', index: 1 },
+      ],
+    });
+    expect(result).toBe(450);
+  });
 });

@@ -13,6 +13,7 @@ export function timelineDurationFrames(options: {
   let endFrame = 0;
   if (options.items?.length && options.tracks?.length) {
     endFrame = buildTransitionPlan(options.items, options.tracks, options.timebase ?? { fpsNum: 30, fpsDen: 1 }).totalFrames;
+    for (const item of options.items) endFrame = Math.max(endFrame, item.startFrame + item.durationFrames);
   } else {
     for (const clip of options.clips ?? []) endFrame = Math.max(endFrame, Math.round(clip.end * fps));
     for (const caption of options.captions ?? []) endFrame = Math.max(endFrame, Math.round(caption.end * fps));

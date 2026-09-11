@@ -10,6 +10,9 @@ export interface Init {
 }
 
 export type Action =
+  | { type: 'import-assets'; assets: import('../../core/types.js').MediaAsset[] }
+  | { type: 'insert-asset'; assetId: string; at: number }
+  | { type: 'remove-asset'; assetId: string }
   | { type: 'apply-auto-cuts'; clips: Clip[] }
   | { type: 'apply-analysis'; clips: Clip[]; captions: CaptionLine[]; proposals: CutProposal[] }
   | { type: 'open-project'; project: Project }
@@ -57,6 +60,28 @@ function isEditableClip(state: State, clip: Clip | undefined): boolean {
 
 export function reduce(state: State, action: Action): State {
   switch (action.type) {
+    case 'import-assets': {
+      const assets = state.present.assets.filter(asset => asset.path);
+      for (const asset of action.assets) if (!assets.some(existing => existing.path.toLowerCase() === asset.path.toLowerCase())) assets.push(asset);
+      const primary = assets.find((asset) => asset.kind === 'video') ?? assets[0];
+      return push(state, { ...state.present, assets, sourcePath: state.present.sourcePath || primary?.path || '' }, false);
+    }
+    case 'insert-asset': {
+      const asset = state.present.assets.find(asset => asset.id === action.assetId);
+      if (!asset || !Number.isFinite(action.at) || action.at < 0) return state;
+      const track = asset.kind === 'audio' ? 'A2' : 'V1';
+      if (state.present.tracks.find(item => item.id === track)?.locked) return state;
+      const clip: Clip = { id: `${asset.id}-${Date.now()}`, assetId: asset.id, sourceIn: 0, track, start: action.at, end: action.at + asset.durationSec, label: asset.path.split(/[\\/]/).pop() ?? 'Nguồn' };
+      return push(state, { ...state.present, clips: [...state.present.clips, clip], sourcePath: state.present.sourcePath || asset.path, durationSec: Math.max(state.present.durationSec, clip.end) });
+    }
+    case 'remove-asset': {
+      if (state.present.clips.some((clip) => clip.assetId === action.assetId)) return state;
+      const removed = state.present.assets.find((asset) => asset.id === action.assetId);
+      if (!removed) return state;
+      const assets = state.present.assets.filter((asset) => asset.id !== action.assetId);
+      const nextPrimary = assets.find((asset) => asset.kind === 'video') ?? assets[0];
+      return push(state, { ...state.present, assets, sourcePath: state.present.sourcePath === removed.path ? nextPrimary?.path ?? '' : state.present.sourcePath }, false);
+    }
     case 'apply-auto-cuts':
       return push(state, { ...state.present, clips: action.clips.map((c) => ({ ...c })) });
     case 'apply-analysis':
@@ -159,7 +184,7 @@ export function reduce(state: State, action: Action): State {
       const duration = clip.end - clip.start;
       const start = Math.max(0, clip.start + action.delta);
       const end = start + duration;
-      return push(state, { ...state.present, clips: state.present.clips.map((item) => item.id === action.id ? { ...item, start, end } : item) });
+      return push(state, { ...state.present, clips: state.present.clips.map((item) => item.id === action.id ? { ...item, sourceIn: item.sourceIn ?? item.start, start, end } : item) });
     }
     case 'move-clips': {
       const ids = new Set(action.ids);
@@ -172,7 +197,7 @@ export function reduce(state: State, action: Action): State {
           if (!ids.has(clip.id) || state.present.tracks.find((track) => track.id === clip.track)?.locked) return clip;
           const duration = clip.end - clip.start;
           const start = Math.max(0, clip.start + action.delta);
-          return { ...clip, start, end: start + duration };
+          return { ...clip, sourceIn: clip.sourceIn ?? clip.start, start, end: start + duration };
         }),
       });
     }
@@ -184,7 +209,7 @@ export function reduce(state: State, action: Action): State {
       const clip = state.present.clips.find((item) => item.id === action.id);
       if (!clip || !isEditableClip(state, clip)) return state;
       const next = action.edge === 'start'
-        ? { ...clip, start: Math.min(clip.end - 1 / 30, Math.max(0, clip.start + action.delta)) }
+        ? { ...clip, sourceIn: (clip.sourceIn ?? clip.start) + Math.max(0, Math.min(clip.end - 1 / 30, Math.max(0, clip.start + action.delta)) - clip.start), start: Math.min(clip.end - 1 / 30, Math.max(0, clip.start + action.delta)) }
         : { ...clip, end: Math.max(clip.start + 1 / 30, clip.end + action.delta) };
       if (next.start === clip.start && next.end === clip.end) return state;
       return push(state, { ...state.present, clips: state.present.clips.map((item) => item.id === action.id ? next : item) });
@@ -201,8 +226,8 @@ export function reduce(state: State, action: Action): State {
           continue;
         }
         didSplit = true;
-        clips.push({ ...c, end: action.at });
-        clips.push({ ...c, id: `${c.id}@${action.at}`, start: action.at });
+        clips.push({ ...c, sourceIn: c.sourceIn ?? c.start, end: action.at });
+        clips.push({ ...c, id: `${c.id}@${action.at}`, sourceIn: (c.sourceIn ?? c.start) + (action.at - c.start), start: action.at });
       }
       if (!didSplit) return state;
       return push(state, { ...state.present, clips });

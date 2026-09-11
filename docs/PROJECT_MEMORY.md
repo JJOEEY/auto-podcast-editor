@@ -398,3 +398,14 @@ Project hiện là vertical slice nâng cao, đã có nhiều backend thật và
 - Đã test: typecheck pass; 45 file/191 test pass; NSIS build pass; launcher bản mới sống 8 giây.
 - Khi cập nhật: cài đè installer mới; runtime đã tải đủ được giữ lại, không tải lại.
 - Còn thiếu/blocker giữ nguyên: benchmark Block 1/ground truth, performance chính thức trên bản cài, clean-install/update/rollback/offline acceptance và acceptance 5 track dài.
+
+### 2026-09-12 — Mốc AA: hoàn thiện khởi động, import và kho nguồn
+- Mục tiêu: sửa màn hình khởi động, bỏ lộ danh sách runtime, cho phép import nhiều video/âm thanh/ảnh và quản lý nguồn trong editor.
+- Đã sửa: khi runtime chưa được xác nhận sẵn sàng, app chỉ hiện màn hình cập nhật riêng; không hiển thị tên công cụ, model, đường dẫn hay lỗi kỹ thuật. Khi runtime đã sẵn sàng, editor mở trực tiếp và hoạt động offline.
+- Đã thêm: `dialog:open-media`, `media:inspect`, kéo-thả file qua preload Electron, `MediaAsset` dedupe theo đường dẫn, kho nguồn có tìm kiếm/lọc/thumbnail preview, thêm nguồn vào timeline và xóa nguồn an toàn.
+- Đã sửa: Import không còn thay project/timeline hiện tại; clip giữ `assetId` và `sourceIn`; preview/export phân giải đường dẫn theo từng asset; audio clip vào A2 và giữ đuôi audio sau video.
+- Đã sửa: trim/move/split giữ source range; timeline duration tính cả mọi item audio; renderer local server nhận toàn bộ asset paths. Build package buộc có React/ReactDOM để tránh lỗi launcher thiếu module.
+- Đã thêm test: import/dedupe/insert asset và audio tail duration.
+- Đã test: `npm run typecheck` pass; 45 test files/193 tests pass; `npm run dist` pass; Electron Builder NSIS pass; app.asar bản cài có React, ReactDOM và Remotion; executable unpacked và executable đã cài sống ít nhất 8 giây.
+- Artifact: version `0.1.2`; buildId `691aa53e260163fbf0077dd4`; installer `release/Auto Podcast Editor-Setup-0.1.2.exe`; SHA-256 `FADD56462D2A70C6429AC4B6E9548C54D9412A2EEE4896CF0FE592EAF4D1B080`; QA install `qa/product-candidate/installed-0.1.2`.
+- Còn thiếu/blocker: chưa chạy nghiệm thu thủ công đầy đủ bằng C0012/DJI trên giao diện; benchmark Block 1/ground truth vẫn deferred; performance chính thức, clean-install/update/rollback/offline acceptance dài và acceptance 5 track vẫn chưa đóng; certificate `excluded-by-user`.

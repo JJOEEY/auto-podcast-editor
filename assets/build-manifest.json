@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "0.1.1",
-  "buildId": "53a066eea552623e2d8d4789",
-  "generatedAt": "2026-09-11T17:43:20.639Z",
+  "version": "0.1.2",
+  "buildId": "691aa53e260163fbf0077dd4",
+  "generatedAt": "2026-09-11T18:28:33.055Z",
   "files": [
     {
       "path": "assets/bin/ffmpeg.exe",
@@ -346,8 +346,8 @@
     },
     {
       "path": "assets/build-manifest.json",
-      "sha256": "dbfbed3994cd219f970c25d890f7246c72a100e1f2fec3ee429b9f5478b3a5ad",
-      "bytes": 78826
+      "sha256": "87dc7f631039edeb3f3d7aa54c2dc0f77d2dfefbd3eb1b664a99b622064857f5",
+      "bytes": 78989
     },
     {
       "path": "assets/codec-smoke-report.json",
@@ -1996,13 +1996,13 @@
     },
     {
       "path": "core/projectMigration.ts",
-      "sha256": "2dfda266552b1432042c444a6a57c4b6833a8d5ec621ca29522ea3570b1e2733",
-      "bytes": 4104
+      "sha256": "416126a23f7a7faa7f0a2580e20df07d9e2e4ade4651928053facc1790c6b719",
+      "bytes": 4182
     },
     {
       "path": "core/propsFile.ts",
-      "sha256": "645f70ae84de15a986722b02a6acc215d31938bf625e66b1d1d4ce62dcb1aac4",
-      "bytes": 1882
+      "sha256": "73c0d519ed91cdd1c2c1fa194feb0f8c58511f32ad8ed7b961db16419b63cf79",
+      "bytes": 2041
     },
     {
       "path": "core/renderGraph.ts",
@@ -2031,8 +2031,8 @@
     },
     {
       "path": "core/timelineDuration.ts",
-      "sha256": "63a6d35c706a2d34c5490736486b48a3714f353961aceda2979ee6ad0d3724c6",
-      "bytes": 1015
+      "sha256": "4a50d0289e58279d8e7b9c54c058343e789e9936125404b24bbcb9fc21f30126",
+      "bytes": 1123
     },
     {
       "path": "core/transitionPlan.ts",
@@ -2041,8 +2041,8 @@
     },
     {
       "path": "core/types.ts",
-      "sha256": "f38634df409f66d0d260d2f77298e3b0cbaee3d31f96ed081d7f8367e104f9c3",
-      "bytes": 5636
+      "sha256": "7967dc3a5481c5b4c70ae31d4b63869fc407803f5e3659e57896c7644360374c",
+      "bytes": 5702
     },
     {
       "path": "core/videoGolden.ts",
@@ -2091,8 +2091,8 @@
     },
     {
       "path": "electron/main.ts",
-      "sha256": "5091d9e45425307863bda93d28a8a83d9d97bce91fe0092db4f4442b5a6bf91d",
-      "bytes": 31068
+      "sha256": "8ace094a2e940b317bd09c0f55762a32545b878c30772f8bb9917ab96265c0f7",
+      "bytes": 32788
     },
     {
       "path": "electron/media.ts",
@@ -2111,13 +2111,13 @@
     },
     {
       "path": "electron/preload.ts",
-      "sha256": "ffc04aace308e4ff22e391079b0e96e2f662bf0c1c01768904e9f229a78d6668",
-      "bytes": 3411
+      "sha256": "581b041a81cf5b44b7407a99e51cfe0ef6a3cda02b4b8bd95cb473de4e260b43",
+      "bytes": 3622
     },
     {
       "path": "electron/remotionRenderer.ts",
-      "sha256": "cb1fd0a6d5eb8f51f646eec16f0afa3de1e12d63f1e7764657e278e7c19ac11f",
-      "bytes": 3843
+      "sha256": "5c2fe52650fb2b3b875495797d831f3cd3e50fbcfcb92c1e75e2bc514074e224",
+      "bytes": 4035
     },
     {
       "path": "electron/render.ts",
@@ -2146,28 +2146,28 @@
     },
     {
       "path": "package-lock.json",
-      "sha256": "6c7eaae34ca75d8594edaf46f23357f6a62f5552a0e5437fd82bc3573f85ca98",
-      "bytes": 350210
+      "sha256": "a33225818773b3afd83664ac20f1f786d76f1fe396730680b442add30eb10bd0",
+      "bytes": 350208
     },
     {
       "path": "package.json",
-      "sha256": "e07336b6d11a1ee01825f09dd85bcecab70bbc74acdce5dbab4ca373ceccb973",
+      "sha256": "245d4bfeda19a3e569606009a398bad2360f93022bcacc1a9e4d24b4f721ab35",
       "bytes": 3608
     },
     {
       "path": "src/App.tsx",
-      "sha256": "37468d0a60515b714d46a9dd144c6d2268732bba75108f9b2fc051af2ea3f16c",
-      "bytes": 20948
+      "sha256": "67e99c407e12aefe9967233f2d7ae2bb19bb1e5caafd99dc7f365eefe85856a5",
+      "bytes": 21460
     },
     {
       "path": "src/api.d.ts",
-      "sha256": "a1203b4ca85090cebaca38251c53f5b92a6028eefa3f7f648cb9c39c020559f1",
-      "bytes": 2887
+      "sha256": "22c9c4c9295099bf6eabe7ed8364a56255b025cce26db1b70193059f6f574ed2",
+      "bytes": 3052
     },
     {
       "path": "src/app.css",
-      "sha256": "776f738a0e7cb0d427f8250f182cfe9375ffe0947cae7a04c7dccb48aadefbe8",
-      "bytes": 11650
+      "sha256": "7abf1ee66c4a3f31a5b17dd0d39f6bcf3a20789842458be01f8539598ae715a4",
+      "bytes": 14100
     },
     {
       "path": "src/components/AudioMixer.tsx",
@@ -2191,13 +2191,13 @@
     },
     {
       "path": "src/components/Preview.tsx",
-      "sha256": "b97683ecd64c64dcde65b198c9b6299f6cf3975031a3afff475b7a3ab9a170a6",
-      "bytes": 9409
+      "sha256": "2eb6469a2949f061f3857a53b547e081a5e384cd21a11c211836cee2a9d361c7",
+      "bytes": 9896
     },
     {
       "path": "src/components/RuntimeSetup.tsx",
-      "sha256": "e54f771a6ca0f9b99c816c03423e93152eebb0af6b59a4f48c3e4fb0e553eb67",
-      "bytes": 2315
+      "sha256": "5e152cba3f3eb5b8cbc0fdea493944ef34cecf0e0cbe58adc94bb61a825fd518",
+      "bytes": 2549
     },
     {
       "path": "src/components/SfxEditor.tsx",
@@ -2208,6 +2208,11 @@
       "path": "src/components/SfxLibrary.tsx",
       "sha256": "3f5c098d1c192656da4042065f8a2c5429d09c05ec39f58ad77b08efe3f55085",
       "bytes": 1487
+    },
+    {
+      "path": "src/components/SourceBin.tsx",
+      "sha256": "6dec44657be609eb0f8dc9ce0894852b179ebf58fc62a354ac65a523ad484236",
+      "bytes": 4120
     },
     {
       "path": "src/components/Timeline.tsx",
@@ -2231,13 +2236,13 @@
     },
     {
       "path": "src/remotion/PodcastComposition.tsx",
-      "sha256": "25b6c12b7252fdd2d0892a14db02abc7f0cb9340b5baf53c3fb6567341e9d351",
-      "bytes": 4758
+      "sha256": "4cb12606906e25723124712a5d3d8cc113bf39908085371ccf92034dab71463f",
+      "bytes": 6070
     },
     {
       "path": "src/remotion/PodcastHorizontal.tsx",
-      "sha256": "6e0cc6d35b0656bdb335aacd6881118337739b8a504ff01d0452e1f56fa88416",
-      "bytes": 3063
+      "sha256": "35538f2929a1148e33e8dfd49ccff93269bcd055163ea2cd6273288d5ea9cd51",
+      "bytes": 4375
     },
     {
       "path": "src/remotion/Root.tsx",
@@ -2261,8 +2266,8 @@
     },
     {
       "path": "src/state/reducer.ts",
-      "sha256": "7796ad4d7f9e9f0e5b9dcd17e29b5b537dd377b39ed45e79f6e934ce83828a7e",
-      "bytes": 12706
+      "sha256": "9039b037b611885a401e059e31ace9970a6a7c25fcb587e40ec8b5891b8a486f",
+      "bytes": 15002
     }
   ]
 }

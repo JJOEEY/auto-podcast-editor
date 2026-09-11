@@ -22,7 +22,7 @@ interface RuntimeCheck {
 interface RuntimeAssetState {
   id: string;
   label: string;
-  kind: 'file' | 'zip';
+  kind: 'file' | 'zip' | 'split-file';
   remotePath: string;
   installPath: string;
   entryPath?: string;
@@ -35,6 +35,9 @@ interface RuntimeAssetState {
 }
 
 interface DesktopApi {
+  openMedia(): Promise<string[]>;
+  inspectMedia(path: string): Promise<import('../core/types.js').MediaAsset>;
+  droppedFilePath(file: File): string;
   openVideo(): Promise<string | null>;
   openModel(): Promise<string | null>;
   defaultModel(): Promise<string | null>;

@@ -4,12 +4,13 @@ import { compressTimeline, TIMELINE_FPS } from '../../core/compressedTimeline.js
 import { buildTransitionPlan } from '../../core/transitionPlan.js';
 import { timelineDurationFrames } from '../../core/timelineDuration.js';
 import { HORIZONTAL_INSETS, VERTICAL_INSETS } from '../../core/safezone.js';
-import type { AudioChain, CaptionLine, Clip, Preset, Timebase, TimelineItem, Track } from '../../core/types.js';
+import type { AudioChain, CaptionLine, Clip, MediaAsset, Preset, Timebase, TimelineItem, Track } from '../../core/types.js';
 import { PodcastComposition } from '../remotion/PodcastComposition.js';
 import { PodcastHorizontal } from '../remotion/PodcastHorizontal.js';
 
 interface Props {
   sourcePath: string;
+  assets?: MediaAsset[];
   clips: Clip[];
   captions: CaptionLine[];
   sfx?: import('../../core/types.js').SfxClip[];
@@ -22,7 +23,7 @@ interface Props {
   audioChain?: AudioChain;
 }
 
-export function Preview({ sourcePath, clips, captions, preset, sfx = [], subtitleStyle = 'karaoke', items, tracks, timebase, audioPreset = 'podcast', audioChain }: Props): JSX.Element {
+export function Preview({ sourcePath, assets = [], clips, captions, preset, sfx = [], subtitleStyle = 'karaoke', items, tracks, timebase, audioPreset = 'podcast', audioChain }: Props): JSX.Element {
   const playerRef = useRef<PlayerRef>(null);
   const [audioMode, setAudioMode] = useState<'original' | 'enhanced'>('enhanced');
   const [enhancedPath, setEnhancedPath] = useState<string | null>(null);
@@ -30,6 +31,7 @@ export function Preview({ sourcePath, clips, captions, preset, sfx = [], subtitl
   const [playerSourcePath, setPlayerSourcePath] = useState('');
   const [playerPreviewAudioPath, setPlayerPreviewAudioPath] = useState<string | undefined>();
   const [playerSfx, setPlayerSfx] = useState<typeof sfx>([]);
+  const [playerAssets, setPlayerAssets] = useState<MediaAsset[]>([]);
   const [isCaptureMode, setIsCaptureMode] = useState(false);
   const audioTracks = (tracks ?? []).filter((track) => track.kind === 'audio' || track.kind === 'sfx');
   const soloTracks = audioTracks.filter((track) => track.solo);
@@ -74,6 +76,15 @@ export function Preview({ sourcePath, clips, captions, preset, sfx = [], subtitl
     });
     return () => { active = false; };
   }, [sourcePath]);
+  useEffect(() => {
+    let active = true;
+    void Promise.all(assets.map(async (asset) => ({ ...asset, path: await window.api.mediaUrl(asset.path) }))).then((resolved) => {
+      if (active) setPlayerAssets(resolved);
+    }).catch(() => {
+      if (active) setPlayerAssets(assets);
+    });
+    return () => { active = false; };
+  }, [assets]);
   useEffect(() => {
     let active = true;
     if (!enhancedPath || audioMode !== 'enhanced') {
@@ -169,7 +180,7 @@ export function Preview({ sourcePath, clips, captions, preset, sfx = [], subtitl
           <Player
             ref={playerRef}
             component={Component}
-            inputProps={{ sourcePath: playerSourcePath, clips, captions, sfx: playerSfx, subtitleStyle, items, tracks, timebase, previewAudioPath, originalAudioVolume: voiceVolume }}
+            inputProps={{ sourcePath: playerSourcePath, assets: playerAssets, clips, captions, sfx: playerSfx, subtitleStyle, items, tracks, timebase, previewAudioPath, originalAudioVolume: voiceVolume }}
             durationInFrames={plannedDuration}
             fps={TIMELINE_FPS}
             compositionWidth={width}
