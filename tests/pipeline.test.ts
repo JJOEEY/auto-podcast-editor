@@ -7,6 +7,7 @@ import { proposeCuts } from '../core/cutDetection.js';
 import { DEFAULT_SETTINGS } from '../core/defaults.js';
 import { buildCaptionTxt, buildSrt } from '../core/exportText.js';
 import { loadProject, saveProject } from '../core/projectFile.js';
+import { migrateProject } from '../core/projectFile.js';
 import type { Project } from '../core/types.js';
 
 describe('sample pipeline', () => {
@@ -31,7 +32,7 @@ describe('sample pipeline', () => {
     };
     const file = join(dir, 'sample.ape.json');
     await saveProject(file, project);
-    expect(await loadProject(file)).toEqual(project);
+    expect(await loadProject(file)).toEqual(migrateProject(project));
     expect(buildCaptionTxt('Sample', ['#a', '#b', '#c', '#d'])).toContain('#d');
   });
 });

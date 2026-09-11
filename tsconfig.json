@@ -5,9 +5,10 @@
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
     "strict": true,
+    "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "outDir": "out",
     "types": ["node"]
   },
-  "include": ["core", "electron", "src", "tests", "electron.vite.config.ts", "vitest.config.ts"]
+  "include": ["core", "electron", "src", "scripts", "tests", "electron.vite.config.ts", "vitest.config.ts"]
 }

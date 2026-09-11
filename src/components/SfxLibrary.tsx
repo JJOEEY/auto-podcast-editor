@@ -25,18 +25,15 @@ export function SfxLibrary({ onAdd }: Props): JSX.Element {
   };
 
   return (
-    <section>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2>Thư viện SFX</h2>
-        <button onClick={importAsset}>Import SFX</button>
-      </div>
+    <section className="sfx-library">
+      <div className="panel-header"><h2>Thư viện SFX</h2><button onClick={importAsset}>＋ Import</button></div>
       {status && <small>{status}</small>}
-      {assets.map((asset) => (
-        <div key={asset.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0' }}>
+      <div className="sfx-list">{assets.map((asset) => (
+        <div key={asset.id} className="sfx-row">
           <span>{asset.name} <small>({asset.category})</small></span>
-          <button onClick={() => onAdd(asset)}>Thêm vào timeline</button>
+          <button onClick={() => onAdd(asset)}>＋</button>
         </div>
-      ))}
+      ))}</div>
       {assets.length === 0 && <p>Chưa có SFX. Import file WAV/MP3 để lưu vào thư viện.</p>}
     </section>
   );

@@ -1,4 +1,4 @@
-import { dedupeIds } from './cutDetection.js';
+import { dedupeIds } from './cutDetection.ts';
 import type { CaptionLine, Word } from './types.js';
 
 const MAX_WORDS = 7;

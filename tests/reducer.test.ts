@@ -14,6 +14,8 @@ describe('apply-analysis', () => {
       proposals: [{ id: 'p1', start: 10, end: 12, kind: 'silence', reason: 't', confidence: 1 }],
     });
     expect(s.present.clips).toHaveLength(1);
+    expect(s.present.items).toHaveLength(1);
+    expect(s.present.items[0]).toMatchObject({ id: 'k1', startFrame: 0, durationFrames: 300 });
     expect(s.present.captions).toHaveLength(1);
     expect(s.present.proposals).toHaveLength(1);
     s = reduce(s, { type: 'undo' });
@@ -42,6 +44,58 @@ describe('manual timeline edits', () => {
     s = reduce(s, { type: 'move-clip', id: 'k', delta: 1 });
     s = reduce(s, { type: 'trim-clip', id: 'k', edge: 'end', delta: 2 });
     expect(s.present.clips[0]).toMatchObject({ start: 3, end: 11 });
+    expect(s.present.items[0]).toMatchObject({ id: 'k', startFrame: 90, durationFrames: 240 });
+  });
+
+  it('moves a multi-selection atomically, changes track, and ripple-deletes', () => {
+    let s = createState({ name: 'ep', sourcePath: 'x', durationSec: 20, preset: 'vertical', settings: DEFAULT_SETTINGS });
+    s = reduce(s, { type: 'apply-auto-cuts', clips: [
+      { id: 'a', track: 'V1', start: 0, end: 2, label: 'a' },
+      { id: 'b', track: 'V1', start: 3, end: 5, label: 'b' },
+    ] });
+    s = reduce(s, { type: 'move-clips', ids: ['a', 'b'], delta: 1 });
+    expect(s.present.clips.map((clip) => clip.start)).toEqual([1, 4]);
+    s = reduce(s, { type: 'set-clip-track', id: 'a', track: 'A1' });
+    expect(s.present.clips[0].track).toBe('A1');
+    s = reduce(s, { type: 'ripple-delete-clip', id: 'b' });
+    expect(s.present.clips.find((clip) => clip.id === 'b')).toBeUndefined();
+  });
+
+  it('applies a validated editor project as one undoable transaction', () => {
+    const initial = createState({ name: 'ep', sourcePath: 'x', durationSec: 20, preset: 'vertical', settings: DEFAULT_SETTINGS });
+    const edited = { ...initial.present, subtitleStyle: 'neon' as const };
+    const next = reduce(initial, { type: 'apply-editor-project', project: edited });
+    expect(next.present.subtitleStyle).toBe('neon');
+    expect(next.past).toHaveLength(1);
+    expect(reduce(next, { type: 'undo' }).present.subtitleStyle).toBe('karaoke');
+  });
+
+  it('changes audio track mute, solo and volume as undoable edits', () => {
+    let s = createState({ name: 'ep', sourcePath: 'x', durationSec: 20, preset: 'vertical', settings: DEFAULT_SETTINGS });
+    s = reduce(s, { type: 'set-track-muted', id: 'A1', muted: true });
+    s = reduce(s, { type: 'set-track-solo', id: 'A1', solo: true });
+    s = reduce(s, { type: 'set-track-volume', id: 'A1', volumeDb: -6 });
+    expect(s.present.tracks.find((track) => track.id === 'A1')).toMatchObject({ muted: true, solo: true, volumeDb: -6 });
+    expect(s.past).toHaveLength(3);
+  });
+
+  it('edits and duplicates SFX as undoable timeline actions', () => {
+    let s = createState({ name: 'ep', sourcePath: 'x', durationSec: 20, preset: 'vertical', settings: DEFAULT_SETTINGS });
+    s = reduce(s, { type: 'add-sfx', clip: { id: 'sfx-1', path: 'whoosh.wav', start: 1, duration: 2, volume: 0.75 } });
+    s = reduce(s, { type: 'update-sfx', id: 'sfx-1', patch: { start: 3, fadeInSec: 0.2, muted: true } });
+    s = reduce(s, { type: 'duplicate-sfx', id: 'sfx-1' });
+    expect(s.present.sfx).toHaveLength(2);
+    expect(s.present.sfx?.[0]).toMatchObject({ start: 3, fadeInSec: 0.2, muted: true });
+    expect(s.present.sfx?.[1].start).toBe(5);
+  });
+
+  it('increments the project revision for edits so command previews can expire', () => {
+    let s = createState({ name: 'ep', sourcePath: 'x', durationSec: 20, preset: 'vertical', settings: DEFAULT_SETTINGS });
+    const before = s.present.revision ?? 0;
+    s = reduce(s, { type: 'set-preset', preset: 'horizontal' });
+    expect(s.present.revision).toBe(before + 1);
+    s = reduce(s, { type: 'undo' });
+    expect(s.present.revision).toBe(before);
   });
 });
 
@@ -137,5 +191,15 @@ describe('reducer input hardening', () => {
     const s = createState({ name: 'e', sourcePath: 'x', durationSec: 1, preset: 'vertical', settings });
     settings.silenceSec = 9;
     expect(s.present.settings.silenceSec).toBe(0.6);
+  });
+
+  it('does not edit a locked track through direct reducer actions', () => {
+    let s = reduce(init(), { type: 'apply-auto-cuts', clips: [{ id: 'locked-clip', track: 'V1', start: 0, end: 10, label: 'locked' }] });
+    s = reduce(s, { type: 'set-track-locked', id: 'V1', locked: true });
+    const before = s;
+    expect(reduce(s, { type: 'move-clip', id: 'locked-clip', delta: 1 })).toBe(before);
+    expect(reduce(s, { type: 'trim-clip', id: 'locked-clip', edge: 'end', delta: 1 })).toBe(before);
+    expect(reduce(s, { type: 'split-clip', id: 'locked-clip', at: 4 })).toBe(before);
+    expect(reduce(s, { type: 'delete-clip', id: 'locked-clip' })).toBe(before);
   });
 });

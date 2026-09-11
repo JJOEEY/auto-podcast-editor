@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseWhisperJson } from '../core/whisperJson.js';
+import { parseWhisperJson, parseWhisperJsonWithStats } from '../core/whisperJson.js';
 
 const sample = {
   transcription: [
@@ -19,8 +19,8 @@ const sample = {
 describe('parseWhisperJson', () => {
   it('maps tokens to words, skipping specials and empties', () => {
     expect(parseWhisperJson(sample)).toEqual([
-      { text: 'xin', start: 0.32, end: 0.37 },
-      { text: 'chào', start: 0.4, end: 0.7 },
+      { text: 'xin', start: 0.32, end: 0.37, confidence: 0.9 },
+      { text: 'chào', start: 0.4, end: 0.7, confidence: 0.95 },
     ]);
   });
 
@@ -33,5 +33,23 @@ describe('parseWhisperJson', () => {
   it('skips tokens with bad offsets', () => {
     const bad = { transcription: [{ tokens: [{ text: 'x' }, { text: 'y', offsets: { from: 5, to: 5 } }] }] };
     expect(parseWhisperJson(bad)).toEqual([]);
+  });
+
+  it('reports raw, zero-duration and invalid token counts', () => {
+    const result = parseWhisperJsonWithStats({
+      transcription: [{ tokens: [
+        { text: '[_BEG_]', offsets: { from: 0, to: 0 } },
+        { text: 'xin', offsets: { from: 10, to: 20 } },
+        { text: 'lỗi', offsets: { from: 20, to: 20 } },
+        { text: 'thiếu-time' },
+      ] }],
+    });
+    expect(result.words).toEqual([{ text: 'xin', start: 0.01, end: 0.02 }]);
+    expect(result.stats).toEqual({
+      rawTokenCount: 4,
+      nonSpecialTokenCount: 3,
+      zeroDurationTokenCount: 1,
+      invalidDurationTokenCount: 1,
+    });
   });
 });

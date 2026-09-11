@@ -12,10 +12,29 @@ const clips: Clip[] = [
 describe('Timeline', () => {
   it('renders one block per clip and splits on button click', async () => {
     const onSplit = vi.fn();
-    const { container } = render(<Timeline clips={clips} onSplit={onSplit} onDelete={() => undefined} />);
+    const { container } = render(<Timeline clips={clips} tracks={[{ id: 'V1', kind: 'video', name: 'Video 1', index: 0 }, { id: 'A1', kind: 'audio', name: 'Voice', index: 1 }]} onSplit={onSplit} onDelete={() => undefined} />);
     expect(container.querySelectorAll('[data-clip]').length).toBe(2);
+    expect(container.querySelector('[data-track-row="A1"]')).not.toBeNull();
     const { fireEvent } = await import('@testing-library/react');
     fireEvent.click(screen.getByTestId('split-k1'));
     expect(onSplit).toHaveBeenCalledWith('k1');
+  });
+
+  it('exposes track reassignment and ripple controls', async () => {
+    const onTrackChange = vi.fn();
+    const onRippleDelete = vi.fn();
+    const { fireEvent } = await import('@testing-library/react');
+    render(<Timeline clips={clips} tracks={[{ id: 'V1', kind: 'video', name: 'Video 1', index: 0 }, { id: 'A1', kind: 'audio', name: 'Voice', index: 1 }]} onTrackChange={onTrackChange} onRippleDelete={onRippleDelete} onSplit={() => undefined} onDelete={() => undefined} />);
+    fireEvent.change(screen.getByLabelText('Track k1'), { target: { value: 'A1' } });
+    fireEvent.click(screen.getByTestId('ripple-k1'));
+    expect(onTrackChange).toHaveBeenCalledWith('k1', 'A1');
+    expect(onRippleDelete).toHaveBeenCalledWith('k1');
+  });
+
+  it('renders draggable trim handles and track visibility controls', () => {
+    const { container } = render(<Timeline clips={clips} tracks={[{ id: 'V1', kind: 'video', name: 'Video 1', index: 0, hidden: false }, { id: 'A1', kind: 'audio', name: 'Voice', index: 1 }]} onTrackMuted={() => undefined} onTrackHidden={() => undefined} onSplit={() => undefined} onDelete={() => undefined} />);
+    expect(container.querySelector('[data-testid="trim-handle-start-k1"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="trim-handle-end-k1"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="hide-track-V1"]')).not.toBeNull();
   });
 });

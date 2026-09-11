@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { buildHashtags } from '../../core/hashtags.js';
-import { estimateBytes, validateExportRequest, type ExportFormat, type ExportQuality, type ExportRequest } from '../../core/export.js';
-import type { Project } from '../../core/types.js';
+import { estimateBytes, supportedExportFormats, validateExportRequest, type ExportFormat, type ExportQuality, type ExportRequest } from '../../core/export.js';
+import type { ProjectV2 } from '../../core/types.js';
 
 interface Props {
-  project: Project;
+  project: ProjectV2;
   onClose: () => void;
   onExport: (request: ExportRequest) => Promise<void>;
 }
@@ -15,6 +15,8 @@ const builtIns: Record<string, Partial<ExportRequest>> = {
   'Lưu trữ ProRes': { format: 'mov-prores', quality: '1080p', target: 'video-audio', captions: 'both' },
   'Audio MP3': { format: 'mp3', quality: '1080p', target: 'audio', captions: 'srt' },
 };
+
+const allFormats: ExportFormat[] = ['mp4-h264', 'mp4-hevc', 'mp4-av1', 'mp4-vvc', 'webm-vp9', 'mov-prores', 'mov-dnxhr', 'mkv-ffv1', 'mp3', 'wav', 'flac', 'aac', 'opus'];
 
 function formatSize(bytes: number): string {
   if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(2)} GB`;
@@ -35,18 +37,38 @@ export function ExportDialog({ project, onClose, onExport }: Props): JSX.Element
   const [range, setRange] = useState<ExportRequest['range']>('all');
   const [thumbSec, setThumbSec] = useState(1);
   const [hashtags, setHashtags] = useState(buildHashtags(project.name));
-  const [voicePreset, setVoicePreset] = useState<NonNullable<ExportRequest['voicePreset']>>('podcast');
+  const [voicePreset, setVoicePreset] = useState<NonNullable<ExportRequest['voicePreset']>>(project.voicePreset ?? 'podcast');
+  const [audioBypass, setAudioBypass] = useState(false);
+  const [duckingEnabled, setDuckingEnabled] = useState(false);
   const [presetName, setPresetName] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [availableFormats, setAvailableFormats] = useState<ExportFormat[] | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void window.api.capabilities().then((snapshot) => {
+      if (active) setAvailableFormats(supportedExportFormats(snapshot.encoders, snapshot.smokeTestedFormats));
+    }).catch(() => {
+      if (active) setAvailableFormats([]);
+    });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (availableFormats && availableFormats.length > 0 && !availableFormats.includes(format)) setFormat(availableFormats[0]);
+  }, [availableFormats, format]);
 
   useEffect(() => {
     setHashtags(buildHashtags(project.name));
   }, [project.name]);
 
   const request = useMemo<ExportRequest>(() => ({
-    fileName, dir, format, quality, customWidth, customHeight, bitrateMode, customMbps, target, captions, range, thumbSec, hashtags, voicePreset,
-  }), [fileName, dir, format, quality, customWidth, customHeight, bitrateMode, customMbps, target, captions, range, thumbSec, hashtags, voicePreset]);
+    fileName, dir, format, quality, customWidth, customHeight, bitrateMode, customMbps, target, captions, range, thumbSec, hashtags,
+    voicePreset: audioBypass ? 'none' : voicePreset,
+    audioBypass,
+    ducking: duckingEnabled ? { enabled: true, voiceTrackId: 'A1', backgroundTrackIds: ['SFX'], threshold: 0.04, ratio: 8, attackMs: 20, releaseMs: 250 } : undefined,
+  }), [fileName, dir, format, quality, customWidth, customHeight, bitrateMode, customMbps, target, captions, range, thumbSec, hashtags, voicePreset, audioBypass, duckingEnabled]);
 
   const estimated = estimateBytes(request, project.durationSec);
 
@@ -79,6 +101,7 @@ export function ExportDialog({ project, onClose, onExport }: Props): JSX.Element
   const submit = async () => {
     setError('');
     try {
+      if (availableFormats && !availableFormats.includes(format)) throw new Error('Codec này không có trong CapabilitySnapshot hiện tại.');
       validateExportRequest(request);
       setSaving(true);
       await onExport(request);
@@ -110,9 +133,11 @@ export function ExportDialog({ project, onClose, onExport }: Props): JSX.Element
         </select></label>
 
         <fieldset><legend>Định dạng</legend>
-          {(['mp4-h264', 'mp4-hevc', 'mp4-av1', 'mp4-vvc', 'webm-vp9', 'mov-prores', 'mov-dnxhr', 'mkv-ffv1', 'mp3', 'wav'] as ExportFormat[]).map((item) => (
+          {(availableFormats === null ? allFormats : availableFormats).map((item) => (
             <label key={item} style={{ marginRight: 12 }}><input type="radio" checked={format === item} onChange={() => setFormat(item)} />{item}</label>
           ))}
+          {availableFormats?.length === 0 && <p style={{ color: '#b91c1c' }}>Không phát hiện được encoder tương thích từ FFmpeg.</p>}
+          {availableFormats && availableFormats.length > 0 && <small>Codec được lọc theo CapabilitySnapshot hiện tại.</small>}
         </fieldset>
 
         <fieldset disabled={target === 'audio'}><legend>Chất lượng</legend>
@@ -137,10 +162,12 @@ export function ExportDialog({ project, onClose, onExport }: Props): JSX.Element
           {(['burn', 'srt', 'both'] as ExportRequest['captions'][]).map((item) => <label key={item} style={{ marginRight: 12 }}><input type="radio" checked={captions === item} onChange={() => setCaptions(item)} />{item}</label>)}
         </fieldset>
         <label>Voice enhance
-          <select value={voicePreset} onChange={(e) => setVoicePreset(e.target.value as NonNullable<ExportRequest['voicePreset']>)}>
+          <select value={voicePreset} disabled={audioBypass} onChange={(e) => setVoicePreset(e.target.value as NonNullable<ExportRequest['voicePreset']>)}>
             <option value="podcast">Podcast</option><option value="clean">Clean</option><option value="broadcast">Broadcast</option><option value="warm">Warm</option><option value="none">Tắt</option>
           </select>
         </label>
+        <label><input type="checkbox" checked={audioBypass} onChange={(e) => setAudioBypass(e.target.checked)} /> A/B bypass voice enhancement</label>
+        <label><input type="checkbox" checked={duckingEnabled} onChange={(e) => setDuckingEnabled(e.target.checked)} /> Duck nhạc/SFX theo giọng nói (sidechain)</label>
         <label>Thumbnail tại giây <input type="number" min="0" step="0.1" value={thumbSec} onChange={(e) => setThumbSec(Number(e.target.value))} /></label>
         <label>Hashtag (4 tag, cách nhau bằng dấu phẩy)<input value={hashtags.join(', ')} onChange={(e) => setHashtags(e.target.value.split(',').map((x) => x.trim()).filter(Boolean).slice(0, 4) as ExportRequest['hashtags'])} style={{ display: 'block', width: '100%' }} /></label>
 

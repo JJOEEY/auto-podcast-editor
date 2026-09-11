@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildCapabilitySnapshot, parseCapabilityNames } from '../electron/capabilities.js';
+import { buildCapabilitySnapshot, llmModeForVram, parseCapabilityNames, parseVramBytes } from '../electron/capabilities.js';
 
 describe('FFmpeg capabilities', () => {
   it('parses encoder names', () => {
@@ -11,5 +11,14 @@ describe('FFmpeg capabilities', () => {
     expect(result.encoders).toContain('libsvtav1');
     expect(result.filters).toContain('loudnorm');
     expect(result.hwaccels).toEqual(['cuda', 'd3d12va']);
+    expect(result.smokeTestedFormats).toEqual([]);
+    expect(result.llmMode).toBe('rule-based');
+  });
+
+  it('parses VRAM and enables GPU mode only at 8GB', () => {
+    expect(parseVramBytes('AdapterRAM=8589934592')).toBe(8589934592);
+    expect(llmModeForVram(8 * 1024 ** 3)).toBe('gpu');
+    expect(llmModeForVram(4 * 1024 ** 3)).toBe('rule-based');
+    expect(parseVramBytes('')).toBeNull();
   });
 });

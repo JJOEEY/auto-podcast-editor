@@ -1,4 +1,4 @@
-import type { CaptionLine, Clip } from './types.js';
+import type { CaptionLine, Clip } from './types.ts';
 
 export const TIMELINE_FPS = 30;
 

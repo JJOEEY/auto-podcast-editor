@@ -1,4 +1,4 @@
-import type { Clip, CutProposal, TransitionConfig, TransitionType } from './types.js';
+import type { Clip, CutProposal, TransitionConfig, TransitionType } from './types.ts';
 
 export const TRANSITION_PRESETS: Array<{ id: TransitionType; label: string; durationFrames: number }> = [
   { id: 'hard-cut', label: 'Hard cut', durationFrames: 0 },
@@ -15,6 +15,12 @@ export const TRANSITION_PRESETS: Array<{ id: TransitionType; label: string; dura
   { id: 'glitch', label: 'Glitch', durationFrames: 8 },
   { id: 'flash', label: 'Flash', durationFrames: 6 },
   { id: 'film-burn', label: 'Film burn', durationFrames: 18 },
+  { id: 'light-leak', label: 'Light leak', durationFrames: 18 },
+  { id: 'whip', label: 'Whip', durationFrames: 12 },
+  { id: 'shake', label: 'Shake', durationFrames: 10 },
+  { id: 'pixel-dissolve', label: 'Pixel dissolve', durationFrames: 18 },
+  { id: 'shape-wipe', label: 'Shape wipe', durationFrames: 30 },
+  { id: 'elastic-push', label: 'Elastic push', durationFrames: 30 },
 ];
 
 export function transitionConfig(type: TransitionType): TransitionConfig {

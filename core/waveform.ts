@@ -26,3 +26,32 @@ export function downsamplePeaks(peaks: number[], targetLength: number): number[]
   }
   return out;
 }
+
+export interface WaveformCache {
+  version: 1;
+  durationSec: number;
+  peaksPerSecond: number;
+  peaks: number[];
+}
+
+export function buildWaveformCacheFromPeaks(rawPeaks: number[], durationSec: number, peaksPerSecond = 50): WaveformCache {
+  if (!Number.isFinite(durationSec) || durationSec < 0) throw new RangeError('durationSec must be non-negative');
+  if (!Number.isFinite(peaksPerSecond) || peaksPerSecond <= 0) throw new RangeError('peaksPerSecond must be positive');
+  const targetLength = Math.max(1, Math.ceil(durationSec * peaksPerSecond));
+  const peaks = rawPeaks.length > 0 ? downsamplePeaks(rawPeaks, targetLength) : [0];
+  return { version: 1, durationSec, peaksPerSecond, peaks };
+}
+
+export function buildWaveformCache(samples: Int16Array, durationSec: number, sampleRate = 8000, peaksPerSecond = 50): WaveformCache {
+  const raw = computePeaks(samples, sampleRate, peaksPerSecond);
+  return buildWaveformCacheFromPeaks(raw, durationSec, peaksPerSecond);
+}
+
+export function parseWaveformCache(input: unknown): WaveformCache {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) throw new Error('invalid waveform cache');
+  const value = input as Partial<WaveformCache>;
+  if (value.version !== 1 || typeof value.durationSec !== 'number' || !Number.isFinite(value.durationSec) || value.durationSec < 0 || typeof value.peaksPerSecond !== 'number' || value.peaksPerSecond <= 0 || !Array.isArray(value.peaks) || value.peaks.some((peak) => typeof peak !== 'number' || !Number.isFinite(peak) || peak < 0 || peak > 1)) {
+    throw new Error('invalid waveform cache');
+  }
+  return { version: 1, durationSec: value.durationSec, peaksPerSecond: value.peaksPerSecond, peaks: [...value.peaks] };
+}

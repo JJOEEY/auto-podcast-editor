@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "testedFormats": [
+    "mp4-h264",
+    "mp4-hevc",
+    "mp4-av1",
+    "mp4-vvc",
+    "webm-vp9",
+    "mov-prores",
+    "mov-dnxhr",
+    "mkv-ffv1",
+    "mp3",
+    "wav",
+    "flac",
+    "aac",
+    "opus"
+  ],
+  "fourKTestedFormats": [
+    "mp4-h264",
+    "mov-prores",
+    "mp4-av1",
+    "mp4-vvc",
+    "mkv-ffv1"
+  ],
+  "fixture": "qa/transition-smoke/transition.mp4 for video and local source with AAC audio for audio",
+  "verification": "Each output was created by bundled assets/bin/ffmpeg.exe and read back by assets/bin/ffprobe.exe."
+}

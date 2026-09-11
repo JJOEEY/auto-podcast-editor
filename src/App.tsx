@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useState } from 'react';
+import { useEffect, useReducer, useRef, useState } from 'react';
 import { buildKeepClips, complementRanges, filterCaptionsToKeeps } from '../core/keepRanges.js';
 import { chunkCaption } from '../core/caption.js';
 import { proposeCuts } from '../core/cutDetection.js';
@@ -12,9 +12,16 @@ import { CutProposals } from './components/CutProposals.js';
 import { ExportDialog } from './components/ExportDialog.js';
 import { CommandPanel } from './components/CommandPanel.js';
 import type { EditCommand } from '../core/commandParser.js';
+import { toEditorCommands } from '../core/commandAdapter.js';
+import { applyEditorCommands, simulateEditorCommands, type DryRunResult } from '../core/commands.js';
+import type { EditorCommand } from '../core/types.js';
+import type { WaveformCache } from '../core/waveform.js';
 import { SfxLibrary } from './components/SfxLibrary.js';
 import { makeSfxClip } from '../core/sfxLibrary.js';
 import { decorateTransitions, TRANSITION_PRESETS, transitionConfig } from '../core/effects.js';
+import { AudioMixer } from './components/AudioMixer.js';
+import { SfxEditor } from './components/SfxEditor.js';
+import { RuntimeSetup } from './components/RuntimeSetup.js';
 
 export function App(): JSX.Element {
   const [state, dispatch] = useReducer(
@@ -27,9 +34,19 @@ export function App(): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [projectFilePath, setProjectFilePath] = useState<string | null>(null);
-  const [doctor, setDoctor] = useState<Record<string, { name: string; ok: boolean; path?: string | null; error?: string | null }> | null>(null);
+  const [doctor, setDoctor] = useState<Record<string, { name: string; ok: boolean; path?: string | null; error?: string | null; vramBytes?: number | null; llmMode?: 'gpu' | 'cpu' | 'rule-based' }> | null>(null);
   const [transitionType, setTransitionType] = useState<'hard-cut' | 'fade' | 'glitch' | 'film-burn'>('fade');
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
+  const [selectedClipIds, setSelectedClipIds] = useState<string[]>([]);
+  const [commandPreview, setCommandPreview] = useState<DryRunResult | null>(null);
+  const [pendingEditorCommands, setPendingEditorCommands] = useState<EditorCommand[]>([]);
+  const [commandPreviewRevision, setCommandPreviewRevision] = useState<number | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [waveform, setWaveform] = useState<WaveformCache | null>(null);
+  const [runtimeReport, setRuntimeReport] = useState<Awaited<ReturnType<typeof window.api.runtimeAssets>> | null>(null);
+  const [runtimeProgress, setRuntimeProgress] = useState<import('../electron/runtimeAssets.js').RuntimeAssetProgress | null>(null);
+  const [runtimeBusy, setRuntimeBusy] = useState(false);
+  const commandRun = useRef(0);
 
   useEffect(() => window.api.onProgress((event) => {
     if (event.name === 'transcribe') setProgress(Math.round(event.fraction * 100));
@@ -47,7 +64,35 @@ export function App(): JSX.Element {
 
   useEffect(() => {
     void window.api.doctor().then(setDoctor).catch(() => setDoctor(null));
+    void window.api.runtimeAssets().then(setRuntimeReport).catch(() => setRuntimeReport(null));
+    return window.api.onRuntimeAssetProgress(setRuntimeProgress);
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    void window.api.captureMode().then((enabled) => enabled ? window.api.captureProject() : null).then((project) => {
+      if (!active || !project) return;
+      dispatch({ type: 'open-project', project });
+      setProjectFilePath(null);
+      setStatus('Player golden capture mode');
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!state.present.sourcePath) {
+      setWaveform(null);
+      return;
+    }
+    let active = true;
+    setWaveform(null);
+    void window.api.waveform(state.present.sourcePath).then((cache) => {
+      if (active) setWaveform(cache);
+    }).catch(() => {
+      if (active) setWaveform(null);
+    });
+    return () => { active = false; };
+  }, [state.present.sourcePath]);
 
   useEffect(() => {
     if (!projectFilePath || !state.present.sourcePath) return;
@@ -199,80 +244,160 @@ export function App(): JSX.Element {
     setStatus(`Đã áp dụng ${selected.length} đề xuất cắt.`);
   };
 
-  const applyCommands = (commands: EditCommand[]): void => {
-    for (const command of commands) {
-      if (command.type === 'remove-silence') applySelectedProposals(state.present.proposals);
-      if (command.type === 'subtitle-style') dispatch({ type: 'set-subtitle-style', style: command.style });
-      if (command.type === 'transition-style') dispatch({ type: 'set-transition-all', transition: transitionConfig(command.transition) });
+  const downloadRuntime = async (): Promise<void> => {
+    setRuntimeBusy(true);
+    setRuntimeProgress(null);
+    setStatus('Đang tải runtime sau cài đặt...');
+    try {
+      const next = await window.api.downloadRuntime();
+      setRuntimeReport(next);
+      const nextDoctor = await window.api.doctor();
+      setDoctor(nextDoctor);
+      setStatus(next.ready ? 'Đã tải xong runtime.' : 'Runtime vẫn còn thành phần thiếu.');
+    } catch (error) {
+      setStatus(`Tải runtime lỗi: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setRuntimeBusy(false);
     }
-    setStatus(`Đã áp dụng ${commands.length} lệnh edit.`);
   };
 
+  const previewCommands = (commands: EditCommand[]): void => {
+    const editorCommands = toEditorCommands(commands, state.present, `ai-${commandRun.current += 1}`);
+    setPendingEditorCommands(editorCommands);
+    setCommandPreview(simulateEditorCommands(state.present, editorCommands));
+    setCommandPreviewRevision(state.present.revision ?? 0);
+  };
+
+  const applyCommands = (): void => {
+    if (!commandPreview || pendingEditorCommands.length === 0 || commandPreviewRevision !== (state.present.revision ?? 0)) {
+      setCommandPreview(null);
+      setPendingEditorCommands([]);
+      setCommandPreviewRevision(null);
+      setStatus('Project đã thay đổi; cần phân tích lệnh lại trước khi áp dụng.');
+      return;
+    }
+    const latestDryRun = simulateEditorCommands(state.present, pendingEditorCommands);
+    if (!latestDryRun.ok) {
+      setCommandPreview(latestDryRun);
+      setCommandPreviewRevision(null);
+      setStatus('Project đã thay đổi; cần phân tích lệnh lại trước khi áp dụng.');
+      return;
+    }
+    const next = applyEditorCommands(state.present, pendingEditorCommands);
+    dispatch({ type: 'apply-editor-project', project: next });
+    setCommandPreview(null);
+    setPendingEditorCommands([]);
+    setCommandPreviewRevision(null);
+    setStatus(`Đã áp dụng ${pendingEditorCommands.length} lệnh edit trong một transaction.`);
+  };
+
+  const aiPreviewCommands = async (text: string): Promise<void> => {
+    setAiBusy(true);
+    try {
+      const result = await window.api.aiCommand(text, state.present, true);
+      if (result.revision !== (state.present.revision ?? 0)) {
+        setStatus('Kết quả AI đã cũ vì project đã thay đổi.');
+        return;
+      }
+      setPendingEditorCommands(result.commands);
+      setCommandPreview(simulateEditorCommands(state.present, result.commands));
+      setCommandPreviewRevision(state.present.revision ?? 0);
+      setStatus(`AI local (${result.mode}) đã tạo ${result.commands.length} lệnh; hãy xem trước rồi xác nhận.`);
+    } catch (error) {
+      setStatus(`AI local chưa chạy: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
+  const runtimeReady = runtimeReport?.ready ?? true;
+
   return (
-    <div style={{ fontFamily: 'system-ui', maxWidth: 1100, margin: '0 auto', padding: 24 }}>
-      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-        <div>
-          <h1 style={{ margin: 0 }}>Auto Podcast Editor</h1>
-          <p style={{ color: '#64748b', marginTop: 6 }}>{status}</p>
+    <div className="app-shell">
+      <header className="topbar">
+        <div className="brand">
+          <div className="brand-mark">A</div>
+          <div><div className="brand-name">Auto Podcast</div><div className="brand-subtitle">EDITOR · LOCAL PROCESSING</div></div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={importVideo} disabled={busy}>Import video</button>
-          <button onClick={openProject} disabled={busy}>Mở project</button>
+        <div className="project-meta">
+          <span className="project-name">{state.present.name || 'Untitled project'}</span>
+          <span className="status-pill">● {status}</span>
+        </div>
+        <nav className="topbar-actions" aria-label="Project actions">
+          <button className="primary" onClick={importVideo} disabled={busy || !runtimeReady}>＋ Import</button>
+          <button onClick={openProject} disabled={busy}>Mở</button>
           <button onClick={saveProject} disabled={busy || !state.present.sourcePath}>Lưu</button>
-          <button onClick={chooseModel} disabled={busy}>{modelPath ? 'Đổi model' : 'Chọn Whisper model'}</button>
-          <button onClick={transcribe} disabled={busy || !state.present.sourcePath}>Transcribe + auto-cut</button>
-          <button onClick={() => setExportOpen(true)} disabled={busy || !state.present.sourcePath}>Xuất</button>
-          {busy && <button onClick={cancel}>Cancel</button>}
-          <select value={state.present.preset} onChange={(event) => dispatch({ type: 'set-preset', preset: event.target.value as 'vertical' | 'horizontal' })}>
+          <button onClick={transcribe} disabled={busy || !runtimeReady || !state.present.sourcePath}>Phân tích</button>
+          {busy && <button onClick={cancel}>Hủy</button>}
+          <select className="format-select" value={state.present.preset} onChange={(event) => dispatch({ type: 'set-preset', preset: event.target.value as 'vertical' | 'horizontal' })} aria-label="Khổ hình">
             <option value="vertical">Dọc 9:16</option>
             <option value="horizontal">Ngang 16:9</option>
           </select>
-        </div>
+          <button className="primary" onClick={() => setExportOpen(true)} disabled={busy || !runtimeReady || !state.present.sourcePath}>Xuất video</button>
+        </nav>
       </header>
-      {busy && (
-        <div style={{ margin: '16px 0' }}>
-          <progress max={100} value={progress} style={{ width: '100%' }} />
-          <small>{progress}% — đang chạy nền, bạn có thể hủy</small>
-        </div>
-      )}
-      <section style={{ marginTop: 24 }}>
-        <CommandPanel onApply={applyCommands} />
-      </section>
-      <section style={{ marginTop: 24 }}>
-        <Preview sourcePath={state.present.sourcePath} clips={state.present.clips} captions={state.present.captions} sfx={state.present.sfx} subtitleStyle={state.present.subtitleStyle} preset={state.present.preset} />
-      </section>
-      <section style={{ marginTop: 24 }}>
-        <CutProposals proposals={state.present.proposals} onApply={applySelectedProposals} />
-      </section>
-      <section style={{ marginTop: 24 }}>
-        <SfxLibrary onAdd={(asset) => dispatch({ type: 'add-sfx', clip: makeSfxClip(asset, 0) })} />
-      </section>
-      <section style={{ marginTop: 24 }}>
-        <h2>Transition</h2>
-        <select value={transitionType} onChange={(event) => setTransitionType(event.target.value as typeof transitionType)}>
-          {TRANSITION_PRESETS.filter((preset) => preset.id !== 'hard-cut').map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
-        </select>
-        <button onClick={() => dispatch({ type: 'set-transition-all', transition: transitionConfig(transitionType) })} disabled={state.present.clips.length < 2}>Áp dụng cho các cut</button>
-      </section>
-      <section style={{ marginTop: 24 }}>
-        <Timeline
+
+      <div className="workspace">
+        <aside className="left-rail">
+          <div className="rail-title"><span>Bộ công cụ</span><span>⌘ K</span></div>
+          <RuntimeSetup report={runtimeReport} progress={runtimeProgress} busy={runtimeBusy} onDownload={downloadRuntime} />
+          <div className="rail-section"><CommandPanel onPreview={previewCommands} onApply={applyCommands} preview={commandPreview} onAiPreview={aiPreviewCommands} aiBusy={aiBusy} /></div>
+          <div className="rail-section"><CutProposals proposals={state.present.proposals} onApply={applySelectedProposals} /></div>
+          <div className="rail-section"><SfxLibrary onAdd={(asset) => dispatch({ type: 'add-sfx', clip: makeSfxClip(asset, 0) })} /></div>
+        </aside>
+
+        <main className="center-stage">
+          <section className="preview-stage">
+            <div className="stage-toolbar"><strong>Preview</strong><span className="subtle">{state.present.preset === 'vertical' ? '1080 × 1920' : '1920 × 1080'} · 30 fps</span><span className="subtle">{state.present.durationSec.toFixed(2)}s</span></div>
+            <div className="preview-canvas">
+              <Preview sourcePath={state.present.sourcePath} clips={state.present.clips} captions={state.present.captions} sfx={state.present.sfx} subtitleStyle={state.present.subtitleStyle} items={state.present.items} tracks={state.present.tracks} timebase={state.present.timebase} preset={state.present.preset} audioPreset={state.present.voicePreset ?? 'podcast'} audioChain={state.present.audioChains.find((chain) => chain.trackId === 'A1')} />
+            </div>
+          </section>
+
+          <section className="timeline-stage">
+            <div className="timeline-toolbar"><strong>Timeline</strong><div className="timeline-toolbar-actions"><span className="subtle">{state.present.clips.length} clips · snap 1 frame</span><button title="Fit timeline">Fit</button></div></div>
+            <div className="timeline-host">
+              <Timeline
           clips={state.present.clips}
+          waveform={waveform}
+          tracks={state.present.tracks}
           durationSec={state.present.durationSec}
           selectedId={selectedClipId}
+          selectedIds={selectedClipIds}
           onSelect={setSelectedClipId}
+          onSelectMany={(ids) => { setSelectedClipIds(ids); setSelectedClipId(ids[0] ?? null); }}
           onMove={(id, delta) => dispatch({ type: 'move-clip', id, delta })}
+          onMoveMany={(ids, delta) => dispatch({ type: 'move-clips', ids, delta })}
           onTrim={(id, edge, delta) => dispatch({ type: 'trim-clip', id, edge, delta })}
           onSplit={(id) => {
             const clip = state.present.clips.find((c) => c.id === id);
             if (clip) dispatch({ type: 'split-clip', id, at: clip.start + 1 });
           }}
           onDelete={(id) => dispatch({ type: 'delete-clip', id })}
-        />
-      </section>
-      <footer style={{ marginTop: 16, color: '#64748b' }}>
-        {state.present.clips.length} video clip · {state.present.captions.length} caption · {state.present.proposals.length} đề xuất
+          onDeleteMany={(ids) => dispatch({ type: 'delete-clips', ids })}
+          onRippleDelete={(id) => dispatch({ type: 'ripple-delete-clip', id })}
+          onTrackChange={(id, track) => dispatch({ type: 'set-clip-track', id, track })}
+          onTrackMuted={(id, muted) => dispatch({ type: 'set-track-muted', id, muted })}
+          onTrackLocked={(id, locked) => dispatch({ type: 'set-track-locked', id, locked })}
+          onTrackHidden={(id, hidden) => dispatch({ type: 'set-track-hidden', id, hidden })}
+              />
+            </div>
+          </section>
+        </main>
+
+        <aside className="right-rail">
+          <div className="rail-title"><span>Inspector</span><span>{selectedClipId ? 'Clip selected' : 'Project'}</span></div>
+          <section className="rail-section"><AudioMixer tracks={state.present.tracks} voicePreset={state.present.voicePreset ?? 'podcast'} onVoicePreset={(preset) => dispatch({ type: 'set-voice-preset', preset })} onMute={(id, muted) => dispatch({ type: 'set-track-muted', id, muted })} onSolo={(id, solo) => dispatch({ type: 'set-track-solo', id, solo })} onVolume={(id, volumeDb) => dispatch({ type: 'set-track-volume', id, volumeDb })} /></section>
+          <section className="rail-section transition-panel"><div className="panel-header"><h2>Transition</h2><span className="badge">CUT</span></div><select value={transitionType} onChange={(event) => setTransitionType(event.target.value as typeof transitionType)} aria-label="Transition type">{TRANSITION_PRESETS.filter((preset) => preset.id !== 'hard-cut').map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}</select><button className="primary" onClick={() => dispatch({ type: 'set-transition-all', transition: transitionConfig(transitionType) })} disabled={state.present.clips.length < 2}>Áp dụng cho các cut</button></section>
+          <section className="rail-section"><SfxEditor clips={state.present.sfx ?? []} onUpdate={(id, patch) => dispatch({ type: 'update-sfx', id, patch })} onDuplicate={(id) => dispatch({ type: 'duplicate-sfx', id })} onRemove={(id) => dispatch({ type: 'remove-sfx', id })} /></section>
+          {doctor && <details className="doctor-panel"><summary>Runtime Doctor</summary><div className="doctor-grid">{Object.values(doctor).map((item) => <span className={item.ok ? 'doctor-ok' : 'doctor-fail'} key={item.name}>{item.ok ? '●' : '○'} {item.name}{item.llmMode ? ` · LLM: ${item.llmMode}` : ''}</span>)}</div></details>}
+        </aside>
+      </div>
+
+      <footer className="statusbar">
+        <div className="statusbar-progress">{busy && <><progress max={100} value={progress} /><span>{progress}%</span></>}<span>{busy ? 'Đang xử lý…' : 'Sẵn sàng'}</span></div>
+        <div className="statusbar-right"><span>{state.present.clips.length} clip</span><span>{state.present.captions.length} caption</span><span>{state.present.proposals.length} đề xuất</span><span>Local processing</span></div>
       </footer>
-      {doctor && <details style={{ marginTop: 16 }}><summary>Dependency Doctor</summary><div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 8 }}>{Object.values(doctor).map((item) => <span key={item.name} style={{ color: item.ok ? '#15803d' : '#b91c1c' }}>{item.ok ? '✓' : '✕'} {item.name}</span>)}</div></details>}
       {exportOpen && <ExportDialog project={state.present} onClose={() => setExportOpen(false)} onExport={exportProject} />}
     </div>
   );

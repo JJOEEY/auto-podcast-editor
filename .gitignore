@@ -2,8 +2,13 @@ node_modules/
 out/
 dist/
 release/
+release*/
+runtime-payload/
+qa/
 assets/bin/
 assets/models/*.bin
+assets/models/*.gguf
+assets/remotion-browser/
 *.log
 .DS_Store
 

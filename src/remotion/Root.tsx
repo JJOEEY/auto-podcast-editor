@@ -1,13 +1,15 @@
 import { Composition, type AnyZodObject } from 'remotion';
-import { PodcastComposition, type PodcastProps } from './PodcastComposition.js';
-import { PodcastHorizontal, type PodcastHorizontalProps } from './PodcastHorizontal.js';
-import { compressTimeline, TIMELINE_FPS } from '../../core/compressedTimeline.js';
+import { PodcastComposition, type PodcastProps } from './PodcastComposition.tsx';
+import { PodcastHorizontal, type PodcastHorizontalProps } from './PodcastHorizontal.tsx';
+import { TIMELINE_FPS } from '../../core/compressedTimeline.ts';
+import { timelineDurationFrames } from '../../core/timelineDuration.ts';
 
 const defaultProps: PodcastProps = { sourcePath: '', clips: [], captions: [], sfx: [], subtitleStyle: 'karaoke' };
 const horizontalDefaults: PodcastHorizontalProps = defaultProps;
 
 function metadata({ props }: { props: PodcastProps }) {
-  return { durationInFrames: compressTimeline(props.clips, props.captions).totalFrames, props };
+  const durationInFrames = props.durationInFrames ?? timelineDurationFrames({ items: props.items, tracks: props.tracks, clips: props.clips, captions: props.captions, sfx: props.sfx, timebase: props.timebase });
+  return { durationInFrames, props };
 }
 
 export function RemotionRoot(): JSX.Element {

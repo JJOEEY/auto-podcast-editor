@@ -25,5 +25,29 @@ export function TransitionOverlay({ config }: { config: TransitionConfig }): JSX
   if (config.type === 'film-burn') {
     return <AbsoluteFill style={{ opacity: peak * 0.8, background: 'radial-gradient(circle at 50% 50%, #f97316, #facc15 35%, transparent 70%)', mixBlendMode: 'screen' }} />;
   }
+  if (config.type === 'light-leak') {
+    return <AbsoluteFill style={{ opacity: peak * 0.8, background: `linear-gradient(${35 + frame * 4}deg, transparent 15%, #fef08a 45%, #fb7185 58%, transparent 82%)`, mixBlendMode: 'screen' }} />;
+  }
+  if (config.type === 'whip') {
+    const x = interpolate(frame, [0, config.durationFrames], [-120, 120], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
+    return <AbsoluteFill style={{ opacity: peak, transform: `translateX(${x}%)`, filter: `blur(${Math.round(14 * peak)}px)`, background: '#111827' }} />;
+  }
+  if (config.type === 'shake') {
+    const x = Math.sin(frame * 2.7) * 4 * peak;
+    const y = Math.cos(frame * 3.1) * 3 * peak;
+    return <AbsoluteFill style={{ opacity: peak, transform: `translate(${x}px, ${y}px)`, border: `${Math.round(12 * peak)}px solid #fff` }} />;
+  }
+  if (config.type === 'pixel-dissolve') {
+    return <AbsoluteFill style={{ opacity: peak, background: `repeating-conic-gradient(#111827 0 8deg, #f8fafc 8deg 16deg)`, backgroundSize: `${Math.max(8, 80 - frame * 3)}px ${Math.max(8, 80 - frame * 3)}px`, mixBlendMode: 'screen' }} />;
+  }
+  if (config.type === 'shape-wipe') {
+    const progress = interpolate(frame, [0, config.durationFrames], [0, 100], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
+    return <AbsoluteFill style={{ background: '#000', opacity: peak, clipPath: `circle(${progress}% at 50% 50%)` }} />;
+  }
+  if (config.type === 'elastic-push') {
+    const x = interpolate(frame, [0, config.durationFrames], [110, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
+    const scale = 1 + Math.sin((frame / Math.max(1, config.durationFrames)) * Math.PI) * 0.08;
+    return <AbsoluteFill style={{ opacity: peak, transform: `translateX(${x}%) scale(${scale})`, background: '#000' }} />;
+  }
   return <AbsoluteFill style={{ background: color, opacity: peak }} />;
 }

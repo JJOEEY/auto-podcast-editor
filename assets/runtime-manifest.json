@@ -1,0 +1,72 @@
+{
+  "schema": 1,
+  "version": "0.1.1",
+  "baseUrl": "https://github.com/JJOEEY/auto-podcast-editor/releases/download/v0.1.1-online/",
+  "assets": [
+    {
+      "id": "core-runtime",
+      "label": "FFmpeg, FFprobe, Whisper và llama.cpp",
+      "kind": "zip",
+      "remotePath": "core-runtime.zip",
+      "installPath": "bin",
+      "entryPath": "ffmpeg.exe",
+      "bytes": 227276357,
+      "sha256": "a57e7d56a5305924c676093e5010313f7b1177e2c13441dc79f2f47e0704c9f0",
+      "required": true
+    },
+    {
+      "id": "remotion-browser",
+      "label": "Remotion browser",
+      "kind": "zip",
+      "remotePath": "remotion-browser.zip",
+      "installPath": "remotion-browser",
+      "entryPath": "chrome-headless-shell.exe",
+      "bytes": 131068641,
+      "sha256": "3a96ab9619a297680746b74c975b7ebfd39fa4440a15b7db316990fde46c4717",
+      "required": true
+    },
+    {
+      "id": "sfx-library",
+      "label": "SFX bundled",
+      "kind": "zip",
+      "remotePath": "sfx.zip",
+      "installPath": "sfx",
+      "entryPath": "whoosh.wav",
+      "bytes": 166638,
+      "sha256": "04c601cbc91bc03aa65ebf7f83e0f69726b3ceb3614f77a51ad1d0bfea17dec0",
+      "required": true
+    },
+    {
+      "id": "whisper-base",
+      "label": "Whisper base tiếng Việt",
+      "kind": "file",
+      "remotePath": "ggml-base.bin",
+      "installPath": "models/ggml-base.bin",
+      "bytes": 147951465,
+      "sha256": "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe",
+      "required": true
+    },
+    {
+      "id": "llm-model",
+      "label": "Qwen local LLM",
+      "kind": "split-file",
+      "remotePath": "Qwen3-4B-Q4_K_M.gguf",
+      "installPath": "models/Qwen3-4B-Q4_K_M.gguf",
+      "parts": [
+        {
+          "remotePath": "Qwen3-4B-Q4_K_M.gguf.part001",
+          "bytes": 1900000000,
+          "sha256": "24f0a2546eee0e1badc6f1b4a1bb803af0cb2bc14ae73b33d160e548eeae86e3"
+        },
+        {
+          "remotePath": "Qwen3-4B-Q4_K_M.gguf.part002",
+          "bytes": 597280256,
+          "sha256": "63721df1792ed8f3bb1d67f1fea374db3151e519db2fa690f28a01681e598d6a"
+        }
+      ],
+      "bytes": 2497280256,
+      "sha256": "7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5",
+      "required": true
+    }
+  ]
+}
